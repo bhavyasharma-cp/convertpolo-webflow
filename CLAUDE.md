@@ -80,7 +80,13 @@ Custom code rules:
   Cloudflare Pages deploys `scripts/` on every push to `main`; Webflow loads each file with one
   `<script>` tag from the Pages URL. Webflow's custom-code boxes are capped (~10,000 chars
   site-wide, ~5,000 per page), so code never lives inside Webflow.
-- GSAP + ScrollTrigger + MotionPathPlugin are loaded **once**, site-wide.
+- Webflow already loads GSAP core (3.15.0, from `cdn.prod.website-files.com/gsap/`); never load a
+  second copy. Plugins come from the same path and version.
+- Loading: the Webflow-registered inline script **CPAnimations** (id `cpanimations`) injects
+  ScrollTrigger and the Pages-hosted files in order. It is applied per page with
+  `set_page_scripts` (the API cannot write the site-wide or freeform custom-code boxes on this
+  site). To add an animation: add its URL to the loader's list, bump the loader version, and
+  apply it to the pages that need it. Scripts must wait for `window.gsap` — Webflow injects it late.
 - Scripts find their section by a data attribute, never by class: `data-cp="infinity"`,
   `data-cp="circle"`, `data-cp="intro"`. Each script initialises every instance on the page,
   so editors can reuse the component anywhere.
