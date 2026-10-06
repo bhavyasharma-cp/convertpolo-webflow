@@ -42,7 +42,7 @@
       { path: [-2264, -946, 4057, 1575], dots: [[924.5, -941.5, 65], [1685.5, 240.5, 65], [788.5, 600.5, 65], [-701.5, -601.5, 65], [-2194.5, 169.5, 65]], text: [[908, -866, 361], [1756, 224, 634], [772, 368, 396], [-717, -810, 361], [-2050, 145, 430]], media: [[-17, -1000], [1359, -325], [-155, 124], [-1634, -1014], [-2194, 332]] },
       { path: [-722, 129.2, 4057, 1575], dots: [[2466.5, 133.7, 65], [3227.5, 1315.7, 65], [2330.5, 1675.7, 65], [840.5, 473.7, 65], [-652.5, 1244.7, 65]], text: [[2450, 209.2, 361], [3298, 1299.2, 634], [2314, 1443.2, 396], [825, 265.2, 361], [-508, 1220.2, 430]], media: [[1525, 75.2], [2901, 750.2], [1387, 1199.2], [-92, 61.2], [-652, 1407.2]] },
       { path: [176, -975.8, 4057, 1575], dots: [[3364.5, -971.3, 65], [4125.5, 210.7, 65], [3228.5, 570.7, 65], [1738.5, -631.3, 65], [245.5, 139.7, 65]], text: [[3348, -895.8, 361], [4196, 194.2, 634], [3212, 338.2, 396], [1723, -839.8, 361], [390, 115.2, 430]], media: [[2423, -1029.8], [3799, -354.8], [2285, 94.2], [806, -1043.8], [246, 302.2]] },
-      { path: [124.4, 211, 751, 291.5], dots: [[704.5, 211.5, 35], [874.5, 326.5, 35], [600.5, 447.5, 35], [233.5, 216.5, 35], [170.5, 464.5, 35]], text: [[632, 0, 450], [911, 294, 322], [573, 511, 324], [13, 41, 305], [0, 474, 280]], media: null }
+      { path: [124.3771, 211.0109, 750.967, 291.539], dots: [[704.5, 211.5, 35], [874.5, 326.5, 35], [600.5, 447.5, 35], [233.5, 216.5, 35], [170.5, 464.5, 35]], text: [[632, 0, 450], [911, 294, 322], [573, 511, 324], [13, 41, 305], [0, 474, 280]], media: null }
     ],
     mobile: [
       { path: [-1346, 90, 1640, 644], dots: [[21, 94, 40], [40, 726, 40], [-383, 550, 40], [-1180, 127, 40], [-1110, 720, 40]], text: [[19, -50, 332], [21, 784, 284], [-503, 618, 240], [-1200, -24, 286], [-1180, 761, 280]], media: [[82, 84], [22, 925], [-504, 755], [-1201, -655], [-1181, 877]] },
@@ -68,7 +68,7 @@
       query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
       media: { w: 870, h: 489 },
       strokeZoomed: 15,                                // line thickness while zoomed (6 in the whole view)
-      stageTop: 203,                                   // stage top in the viewport (frame 1:8676)
+      stageTop: 203, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:8676
       travel: 1.5, travelEase: 'none',                 // 01→05
       zoomOut: 0.8, zoomOutEase: 'none',               // 05 → whole
       slideOut: { distance: 1430, duration: 1, ease: 'power1.out' }
@@ -77,7 +77,7 @@
       query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
       media: { w: 275, h: 598 },
       strokeZoomed: 10,
-      stageTop: 139,                                   // frame 1:902
+      stageTop: 139, frameHeight: 844,                 // frame 1:902 (390×844)
       travel: 0.6, travelEase: 'power1.out',
       zoomOut: 0.6, zoomOutEase: 'power1.out',
       slideOut: null
@@ -106,10 +106,12 @@
     var dots = all(svg, '[data-cp="infinity-dot"]');
     if (!progress || dots.length !== 5) return null;
     var m = progress.parentNode.transform.baseVal.consolidate();
+    var pm = m ? m.matrix : { a: 1, d: 1, e: 0, f: 0 }, bb = progress.getBBox();
     progress.setAttribute('opacity', '1');   // the dark path; the reveal mask decides how much shows
     return {
-      svg: svg, stage: stage, steps: steps, dots: dots, progress: progress,
-      pathMatrix: m ? m.matrix : { a: 1, d: 1, e: 0, f: 0 },
+      svg: svg, stage: stage, steps: steps, dots: dots, progress: progress, pathMatrix: pm,
+      // The path's real box in stage pixels (what the camera maps onto each frame's path box).
+      pathBox: [pm.e + pm.a * bb.x, pm.f + pm.d * bb.y, pm.a * bb.width, pm.d * bb.height],
       media: all(section, '[data-cp="infinity-media"]'),
       centers: dots.map(function (d) {
         var c = d.querySelector('circle');
@@ -129,7 +131,7 @@
       var sx = function (a) { var b = a.slice(); b[0] += DESKTOP_X_SHIFT; return b; };
       return { path: sx(k.path), dots: k.dots.map(sx), text: k.text.map(sx), media: k.media && k.media.map(sx), mask: sx(k.mask) };
     });
-    var last = K.length - 1, whole = K[last];
+    var last = K.length - 1;
 
     // The camera scales one <g> holding the path and dots; step text and videos are HTML and only move.
     var world = c.svg.querySelector('g[data-cp-world]');
@@ -153,10 +155,11 @@
     media.forEach(function (el) { gsap.set(el, { width: mode.media.w, height: mode.media.h, left: 0, top: 0 }); });
     var base = c.steps.map(function (s) { return { x: s.offsetLeft, y: s.offsetTop }; });
 
-    // World transform for a keyframe: maps the whole-view path box onto the frame's path box.
+    // World transform for a keyframe: maps the page's path box onto the frame's path box.
+    var box = c.pathBox;
     function camera(k) {
-      var s = k.path[2] / whole.path[2];
-      return { s: s, tx: k.path[0] - s * whole.path[0], ty: k.path[1] - s * whole.path[1] };
+      var s = k.path[2] / box[2];
+      return { s: s, tx: k.path[0] - s * box[0], ty: k.path[1] - s * box[1] };
     }
     // The dark path shows only inside an ellipse, exactly like the prototype's "Mask group": it grows
     // and turns frame by frame. The clip lives in the path's own coordinates (inside its <g>).
@@ -211,10 +214,12 @@
       ellipse.setAttribute('transform', 'translate(' + lx + ' ' + ly + ') rotate(' + mk[4] + ')');
     }
 
-    // Pin so the stage sits where Figma puts it (shorter screens: as low as still fits).
+    // Pin so the stage sits where Figma puts it, with the Figma frame centred on the screen's real
+    // height (as the prototype viewer does); never so low that the whole infinity doesn't fit.
     var stageInSection = c.stage.getBoundingClientRect().top - section.getBoundingClientRect().top;
     function pinTop() {
-      var top = Math.max(0, Math.min(mode.stageTop, window.innerHeight - c.stage.offsetHeight - 20));
+      var vh = window.innerHeight;
+      var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
       return Math.round(top - stageInSection);
     }
 
