@@ -20,7 +20,8 @@
  *         path[data-cp="infinity-track"] / path[data-cp="infinity-progress"] / g[data-cp="infinity-dot"] ×5
  *       [data-cp="infinity-step"] ×5     step text, 01→05
  *       [data-cp="infinity-media"] ×5    video slot per step, 01→05 (hidden until the script shows it),
- *         holding video[data-cp="infinity-video"] — only the current step's video plays
+ *         holding video[data-cp="infinity-video"][data-media="desktop"|"mobile"] — the one for the
+ *         current breakpoint is shown; only the current step's video plays
  *
  * Reduced motion: whole infinity, fully drawn, no pinning, no videos. Needs GSAP + ScrollTrigger.
  */
@@ -66,8 +67,8 @@
 
   var MODES = {
     desktop: {
-      query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
-      media: { w: 870, h: 489, fit: 'cover' },        // video slot (Figma 870×489)
+      name: 'desktop', query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
+      media: { w: 870, h: 489 },                       // video slot (Figma 870×489)
       strokeZoomed: 15,                                // line thickness while zoomed (6 in the whole view)
       stageTop: 203, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:8676
       travel: 1.5, travelEase: 'none',                 // 01→05
@@ -75,10 +76,8 @@
       slideOut: { distance: 1430, duration: 1, ease: figmaEaseOut }
     },
     mobile: {
-      query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
-      // Figma's mobile slots are portrait (275×598). Until portrait cuts of the videos exist, the
-      // landscape videos are shown whole (contain) on the page background instead of cropped.
-      media: { w: 275, h: 598, fit: 'contain', background: 'transparent' },
+      name: 'mobile', query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
+      media: { w: 275, h: 598 },                       // portrait video slot (Figma 275×598)
       strokeZoomed: 10,
       stageTop: 139, frameHeight: 844,                 // frame 1:902 (390×844)
       // Stepped, like the prototype: each step owns a slice of the scroll, and entering it plays
@@ -196,10 +195,20 @@
         duration: PULSE.duration, ease: PULSE.ease, yoyo: true, repeat: -1 });
     });
 
+    // Each slot holds a desktop and a mobile cut; show this breakpoint's, hide (and stop) the other.
+    var videos = media.map(function (el) {
+      var mine = null;
+      all(el, 'video[data-cp="infinity-video"]').forEach(function (v) {
+        var match = (v.getAttribute('data-media') || mode.name) === mode.name;
+        if (match && !mine) mine = v;
+        else { try { v.pause(); } catch (_) {} }
+        gsap.set(v, { display: match && v === mine ? 'block' : 'none' });
+      });
+      if (mine && mine.preload === 'none') mine.preload = 'auto';
+      return mine;
+    });
+
     // Only the current step's video plays, from the start each time its step is reached.
-    var videos = media.map(function (el) { return el.querySelector('video'); });
-    videos.forEach(function (v) { if (v) gsap.set(v, { objectFit: mode.media.fit }); });
-    if (mode.media.background) media.forEach(function (el) { gsap.set(el, { backgroundColor: mode.media.background }); });
     var playing = -1;
     function playStep(n) {
       if (n === playing) return;
