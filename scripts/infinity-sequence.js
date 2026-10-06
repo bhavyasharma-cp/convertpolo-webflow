@@ -79,6 +79,7 @@
       // testimonials −1850px, footer fades in with its heading 23px above the stage top (180 vs 203).
       // Distances are measured on the page so the slides start/end just off screen at any width
       // (Figma at 1440: 1460 → 80, then 80 → −1770; the infinity ends at −22 past the left edge).
+      autoAdvance: true,                               // step videos play once, then move to the next step
       slideOut: {
         cardsBelowStage: 96, duration: 1, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6,
         exit: { duration: 0.6, headingBelowStage: -23 }
@@ -375,7 +376,7 @@
       tailStep = s;
     }
 
-    window.ScrollTrigger.create({
+    var pin = window.ScrollTrigger.create({
       trigger: section,
       start: function () { return 'top ' + pinTop() + 'px'; },
       end: function () { return '+=' + Math.round(infinityPx() + steps * stepPx()); },
@@ -384,6 +385,36 @@
       onRefresh: function (self) { update(self, true); },
       onUpdate: function (self) { update(self, false); }
     });
+
+    if (mode.autoAdvance) {
+      // Auto-advance: when a step's video ends and the visitor hasn't scrolled, scroll on to the
+      // next step (01 → … → 05 → whole infinity) at the prototype's own pace. Any wheel, touch,
+      // key or click cancels it, so the visitor always stays in control.
+      var holdTime = function (k) { return k < last ? HOLD / 2 + k * (HOLD + mode.travel) : units - HOLD / 2; };
+      var auto = null;
+      var cancelAuto = function () {
+        if (!auto) return;
+        auto.kill(); auto = null;
+        ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (t) { window.removeEventListener(t, cancelAuto, true); });
+      };
+      var advanceFrom = function (n) {
+        if (auto || !pin.isActive || playing !== n || Math.abs(state.p - n) > 0.02) return;
+        var to = n + 1, seconds = to === last ? mode.zoomOut : mode.travel;
+        var y = pin.start + (holdTime(to) / units) * infinityPx();
+        var pos = { y: window.pageYOffset };
+        ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (t) { window.addEventListener(t, cancelAuto, true); });
+        auto = gsap.to(pos, {
+          y: y, duration: seconds, ease: 'none',
+          onUpdate: function () { window.scrollTo(0, pos.y); },
+          onComplete: function () { auto = null; cancelAuto(); }
+        });
+      };
+      videos.forEach(function (v, n) {
+        if (!v) return;
+        v.loop = false;   // play once, then move on
+        v.addEventListener('ended', function () { advanceFrom(n); });
+      });
+    }
 
     function update(self, instant) {
       var into = self.scroll() - self.start, inf = infinityPx();
