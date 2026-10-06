@@ -72,7 +72,7 @@
       stageTop: 203, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:8676
       travel: 1.5, travelEase: 'none',                 // 01→05
       zoomOut: 0.8, zoomOutEase: 'none',               // 05 → whole
-      slideOut: { distance: 1430, duration: 1, ease: 'power1.out' }
+      slideOut: { distance: 1430, duration: 1, ease: figmaEaseOut }
     },
     mobile: {
       query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
@@ -81,14 +81,28 @@
       media: { w: 275, h: 598, fit: 'contain', background: 'transparent' },
       strokeZoomed: 10,
       stageTop: 139, frameHeight: 844,                 // frame 1:902 (390×844)
-      travel: 0.6, travelEase: 'power1.out',
-      zoomOut: 0.6, zoomOutEase: 'power1.out',
+      // Stepped, like the prototype: each step owns a slice of the scroll, and entering it plays
+      // the frame's own transition (Smart Animate 0.6s ease-out) instead of following the finger.
+      stepped: { duration: 0.6, scrollPerStep: 0.5 },
       slideOut: null
     }
   };
   var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
   var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
   var PULSE = { ratio: 53 / 65, duration: 0.8, ease: 'power1.out' };
+
+  // Figma's "Ease out" curve: cubic-bezier(0, 0, 0.58, 1).
+  function figmaEaseOut(t) {
+    // Solve x(u) = t for the bezier parameter u (x1 = 0, x2 = 0.58), then return y(u) (y1 = 0, y2 = 1).
+    var u = t;
+    for (var i = 0; i < 8; i++) {
+      var x = 3 * (1 - u) * u * u * 0.58 + u * u * u - t;
+      var dx = 3 * (2 * u - 3 * u * u) * 0.58 + 3 * u * u;
+      if (Math.abs(x) < 1e-6 || dx === 0) break;
+      u = Math.min(1, Math.max(0, u - x / dx));
+    }
+    return 3 * (1 - u) * u * u + u * u * u;
+  }
 
   function log(msg, e) { try { console.debug('[infinity] ' + msg, e || ''); } catch (_) {} }
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -241,6 +255,28 @@
       return Math.round(top - stageInSection);
     }
 
+    if (mode.stepped) {
+      // One slice of scroll per frame (01…05, whole). Crossing into a slice plays the prototype's
+      // transition to that frame; fast flicks go straight to the frame that was reached.
+      var zones = last + 1, current = 0, st = mode.stepped;
+      window.ScrollTrigger.create({
+        trigger: section,
+        start: function () { return 'top ' + pinTop() + 'px'; },
+        end: function () { return '+=' + Math.round(window.innerHeight * st.scrollPerStep * zones); },
+        pin: true,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        onUpdate: function (self) {
+          var target = Math.min(last, Math.floor(self.progress * zones));
+          if (target === current) return;
+          current = target;
+          gsap.to(state, { p: target, duration: st.duration, ease: figmaEaseOut, overwrite: true, onUpdate: render });
+        }
+      });
+      render();
+      return;
+    }
+
     var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut + (mode.slideOut ? mode.slideOut.duration : 0);
     var next = mode.slideOut ? section.nextElementSibling : null;
     var onScroll = null;
@@ -302,6 +338,8 @@
           continue;
         }
         gsap.registerPlugin(ScrollTrigger);
+        // Phones resize the viewport as the address bar hides/shows; don't re-layout pins for that.
+        ScrollTrigger.config({ ignoreMobileResize: true });
         (function (s) {
           var mm = gsap.matchMedia();
           Object.keys(MODES).forEach(function (k) {
