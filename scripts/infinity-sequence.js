@@ -73,7 +73,13 @@
       stageTop: 203, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:8676
       travel: 1.5, travelEase: 'none',                 // 01→05
       zoomOut: 0.8, zoomOutEase: 'none',               // 05 → whole
-      slideOut: { distance: 1430, duration: 1, ease: figmaEaseOut }
+      // 1:8676 → 1:10281 (1s ease-out): infinity −1430px, testimonials −1380px (1460 → 80),
+      // cards 96px below the stage top (299 vs 203). Then 1:10281 → 1:10671 (0.6s ease-out):
+      // testimonials −1850px, footer fades in with its heading 23px above the stage top (180 vs 203).
+      slideOut: {
+        distance: 1430, nextDistance: 1380, cardsBelowStage: 96, duration: 1, ease: figmaEaseOut,
+        exit: { distance: 1850, duration: 0.6, headingBelowStage: -23, hold: 0.5 }
+      }
     },
     mobile: {
       name: 'mobile', query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
@@ -286,8 +292,38 @@
       return;
     }
 
-    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut + (mode.slideOut ? mode.slideOut.duration : 0);
-    var next = mode.slideOut ? section.nextElementSibling : null;
+    // After the whole infinity (prototype 1:8676 → 1:10281 → 1:10671): the infinity slides out left
+    // as the next section (testimonials) slides in from the right; then the testimonials slide out
+    // left too and the section after them (the footer) fades in where they were. Both sections are
+    // pulled up over the infinity's place, measured now from the natural layout, before pinning.
+    var o = mode.slideOut;
+    var next = o ? section.nextElementSibling : null;
+    var after = next && next.parentNode ? next.parentNode.nextElementSibling : null;
+    var afterHeading = after ? after.querySelector('h1, h2, h3') : null;
+    if (!afterHeading) after = null;
+    // When the pin ends, content after the section sits at (its offset from the section top) +
+    // (section top on screen), and the stage top is stageTopInSection below the section top.
+    // So each offset is chosen to put the content where Figma has it relative to the stage.
+    var stageTopInSection = c.stage.offsetTop;
+    var nextMargin = 0, afterMargin = 0;
+    if (next) {
+      var docTop = function (el) { return el.getBoundingClientRect().top + window.pageYOffset; };
+      var margin = function (el) { return parseFloat(getComputedStyle(el).marginTop) || 0; };
+      var S = docTop(section);
+      // Testimonial cards (top of the next section's padding) land o.cardsBelowStage below the stage.
+      var nextPad = parseFloat(getComputedStyle(next).paddingTop) || 0;
+      var dNext = (stageTopInSection + o.cardsBelowStage - nextPad) - (docTop(next) - S);
+      nextMargin = margin(next) + dNext;
+      if (after) {
+        // The footer heading lands o.exit.headingBelowStage below the stage (it moves by dNext too).
+        var headingInAfter = docTop(afterHeading) - docTop(after);
+        var dAfter = (stageTopInSection + o.exit.headingBelowStage - headingInAfter) - (docTop(after) + dNext - S);
+        afterMargin = margin(after) + dAfter;
+      }
+    }
+
+    var tail = o ? o.duration + (after ? HOLD + o.exit.duration + o.exit.hold : 0) : 0;
+    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut + tail;
     var onScroll = null;
     var tl = gsap.timeline({
       onUpdate: render,
@@ -310,18 +346,28 @@
     }
 
     if (next) {
-      // The next section (testimonials) slides in from the right as the infinity slides out left.
-      // It is pulled up by the section's height so it lands where the infinity was when the pin ends.
-      var o = mode.slideOut;
       gsap.set(section.parentNode, { overflowX: 'clip' });
-      gsap.set(next, { marginTop: -section.offsetHeight, x: o.distance, position: 'relative', zIndex: 1 });
+      gsap.set(next, { marginTop: nextMargin, x: o.nextDistance, position: 'relative', zIndex: 1 });
+      // 1:8676 → 1:10281: infinity out left, testimonials in from the right (1s ease-out).
       tl.to(c.stage, { x: -o.distance, duration: o.duration, ease: o.ease }, 'slide');
       tl.to(next, { x: 0, duration: o.duration, ease: o.ease }, 'slide');
-      // While pinned, the next section rises by exactly the scroll left before the pin ends;
-      // offsetting it by that amount (unsmoothed, straight from the scroll position) keeps it level.
+      var level = [next];
+      if (after) {
+        // 1:10281 → 1:10671: testimonials out left, footer fades in (0.6s ease-out).
+        if (after.parentNode) gsap.set(after.parentNode, { overflowX: 'clip' });
+        gsap.set(after, { marginTop: afterMargin, autoAlpha: 0, position: 'relative', zIndex: 1 });
+        tl.to({}, { duration: HOLD });
+        tl.to(next, { x: -o.exit.distance, duration: o.exit.duration, ease: o.ease }, 'exit');
+        tl.to(after, { autoAlpha: 1, duration: o.exit.duration, ease: o.ease }, 'exit');
+        tl.to({}, { duration: o.exit.hold });
+        level.push(after);
+      }
+      // While pinned, content after the section rises by exactly the scroll left before the pin
+      // ends; offsetting it by that amount (unsmoothed, straight from the scroll position) keeps
+      // it level, so the slides stay horizontal like the prototype.
       onScroll = function (self) {
-        var slidePx = window.innerHeight * SCROLL_PER_UNIT * o.duration;
-        gsap.set(next, { y: Math.max(-slidePx, Math.min(0, self.scroll() - self.end)) });
+        var tailPx = window.innerHeight * SCROLL_PER_UNIT * tail;
+        gsap.set(level, { y: Math.max(-tailPx, Math.min(0, self.scroll() - self.end)) });
       };
       onScroll(tl.scrollTrigger);
     }
