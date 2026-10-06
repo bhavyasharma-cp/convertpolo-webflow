@@ -5,7 +5,8 @@
  *   1:10189 → 1:10069  zoomed view slides up into place (0.8s ease-out) — here: the scroll-in
  *   1:10069 → 1:8432 → 1:8493 → 1:8554 → 1:8615   steps 01→05, Smart Animate 1.5s linear each
  *   1:8615  → 1:8676   zoom out to the whole infinity, 0.8s linear
- *   1:8676  → 1:10281  infinity slides out left, testimonials slide in from the right, 1s ease-out
+ *   1:8676  → 1:10281  next scroll: infinity out left, testimonials in from the right, 1s ease-out
+ *   1:10281 → 1:10671  next scroll: testimonials out left, footer (form) fades in, 0.6s ease-out
  * Mobile frames: 1:588 (01) → 1:674 → 1:731 → 1:788 → 1:845 (05) → 1:902 (whole), 0.6s ease-out each.
  * Each frame waits for a click in the prototype; on the site each step holds while you scroll.
  *
@@ -76,9 +77,11 @@
       // 1:8676 → 1:10281 (1s ease-out): infinity −1430px, testimonials −1380px (1460 → 80),
       // cards 96px below the stage top (299 vs 203). Then 1:10281 → 1:10671 (0.6s ease-out):
       // testimonials −1850px, footer fades in with its heading 23px above the stage top (180 vs 203).
+      // Distances are measured on the page so the slides start/end just off screen at any width
+      // (Figma at 1440: 1460 → 80, then 80 → −1770; the infinity ends at −22 past the left edge).
       slideOut: {
-        distance: 1430, nextDistance: 1380, cardsBelowStage: 96, duration: 1, ease: figmaEaseOut,
-        exit: { distance: 1850, duration: 0.6, headingBelowStage: -23, hold: 0.5 }
+        cardsBelowStage: 96, duration: 1, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6,
+        exit: { duration: 0.6, headingBelowStage: -23 }
       }
     },
     mobile: {
@@ -322,22 +325,9 @@
       }
     }
 
-    var tail = o ? o.duration + (after ? HOLD + o.exit.duration + o.exit.hold : 0) : 0;
-    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut + tail;
-    var onScroll = null;
-    var tl = gsap.timeline({
-      onUpdate: render,
-      scrollTrigger: {
-        trigger: section,
-        start: function () { return 'top ' + pinTop() + 'px'; },
-        end: function () { return '+=' + Math.round(window.innerHeight * SCROLL_PER_UNIT * units); },
-        pin: true,
-        scrub: 0.6,
-        invalidateOnRefresh: true,
-        onUpdate: function (self) { if (onScroll) onScroll(self); },
-        onRefresh: function (self) { if (onScroll) onScroll(self); }
-      }
-    });
+    // The infinity part (01 → 05 → whole) follows the scroll, smoothed like a 0.6s scrub.
+    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut;
+    var tl = gsap.timeline({ paused: true, onUpdate: render });
     tl.to({}, { duration: HOLD });
     for (var n = 1; n <= last; n++) {
       var zoomOut = n === last;
@@ -345,31 +335,69 @@
       tl.to({}, { duration: HOLD });
     }
 
+    // Then, like the prototype's clicks, one scroll step each: testimonials in (1s), form (0.6s).
+    // Each step plays its whole transition on time; scrolling back plays it in reverse.
+    var steps = !next ? 0 : after ? 2 : 1;
+    var stepPx = function () { return window.innerHeight * o.scrollPerStep; };
+    var infinityPx = function () { return window.innerHeight * SCROLL_PER_UNIT * units; };
+    var stage = c.stage, tailStep = 0, level = [];
+    var stageOut = 0, nextIn = 0, nextOut = 0;
+
     if (next) {
+      // Card row extents in the natural layout, so the slides start and end just off screen at
+      // any screen width (Figma 1440: testimonials start at 1460, leave to −1770 + 1750 = −20).
+      var cards = all(next, '*').filter(function (el) { var r = el.getBoundingClientRect(); return r.width > 300 && r.width < 900 && r.height > 200; });
+      var cardsLeft = Infinity, cardsRight = -Infinity;
+      cards.forEach(function (el) { var r = el.getBoundingClientRect(); cardsLeft = Math.min(cardsLeft, r.left); cardsRight = Math.max(cardsRight, r.right); });
+      if (!cards.length) { cardsLeft = 0; cardsRight = window.innerWidth; }
+      stageOut = stage.getBoundingClientRect().right + o.offscreenGap;           // infinity: left edge
+      nextIn = window.innerWidth + o.offscreenGap - cardsLeft;                  // testimonials: from right
+      nextOut = cardsRight + o.offscreenGap;                                    // testimonials: out left
+
       gsap.set(section.parentNode, { overflowX: 'clip' });
-      gsap.set(next, { marginTop: nextMargin, x: o.nextDistance, position: 'relative', zIndex: 1 });
-      // 1:8676 → 1:10281: infinity out left, testimonials in from the right (1s ease-out).
-      tl.to(c.stage, { x: -o.distance, duration: o.duration, ease: o.ease }, 'slide');
-      tl.to(next, { x: 0, duration: o.duration, ease: o.ease }, 'slide');
-      var level = [next];
+      gsap.set(next, { marginTop: nextMargin, x: nextIn, autoAlpha: 0, position: 'relative', zIndex: 1 });
+      level.push(next);
       if (after) {
-        // 1:10281 → 1:10671: testimonials out left, footer fades in (0.6s ease-out).
         if (after.parentNode) gsap.set(after.parentNode, { overflowX: 'clip' });
         gsap.set(after, { marginTop: afterMargin, autoAlpha: 0, position: 'relative', zIndex: 1 });
-        tl.to({}, { duration: HOLD });
-        tl.to(next, { x: -o.exit.distance, duration: o.exit.duration, ease: o.ease }, 'exit');
-        tl.to(after, { autoAlpha: 1, duration: o.exit.duration, ease: o.ease }, 'exit');
-        tl.to({}, { duration: o.exit.hold });
         level.push(after);
       }
-      // While pinned, content after the section rises by exactly the scroll left before the pin
-      // ends; offsetting it by that amount (unsmoothed, straight from the scroll position) keeps
-      // it level, so the slides stay horizontal like the prototype.
-      onScroll = function (self) {
-        var tailPx = window.innerHeight * SCROLL_PER_UNIT * tail;
-        gsap.set(level, { y: Math.max(-tailPx, Math.min(0, self.scroll() - self.end)) });
-      };
-      onScroll(tl.scrollTrigger);
+    }
+
+    function goToTail(s) {
+      if (s === tailStep) return;
+      var dur = (s === 2 && tailStep === 1) || (s === 1 && tailStep === 2) ? o.exit.duration : o.duration;
+      var tw = { duration: dur, ease: o.ease, overwrite: 'auto' };
+      gsap.to(stage, Object.assign({ x: s === 0 ? 0 : -stageOut }, tw));
+      if (s === 0) gsap.to(next, Object.assign({ x: nextIn, onComplete: function () { gsap.set(next, { autoAlpha: 0 }); } }, tw));
+      else { gsap.set(next, { autoAlpha: 1 }); gsap.to(next, Object.assign({ x: s === 1 ? 0 : -nextOut }, tw)); }
+      if (after) gsap.to(after, Object.assign({ autoAlpha: s === 2 ? 1 : 0 }, tw));
+      tailStep = s;
+    }
+
+    window.ScrollTrigger.create({
+      trigger: section,
+      start: function () { return 'top ' + pinTop() + 'px'; },
+      end: function () { return '+=' + Math.round(infinityPx() + steps * stepPx()); },
+      pin: true,
+      invalidateOnRefresh: true,
+      onRefresh: function (self) { update(self, true); },
+      onUpdate: function (self) { update(self, false); }
+    });
+
+    function update(self, instant) {
+      var into = self.scroll() - self.start, inf = infinityPx();
+      var prog = Math.max(0, Math.min(1, into / inf));
+      if (instant) tl.progress(prog);
+      else gsap.to(tl, { progress: prog, duration: 0.6, ease: 'power3.out', overwrite: true });
+      if (steps) {
+        // Content after the section stays exactly where it will be when the pin ends.
+        gsap.set(level, { y: Math.min(0, Math.max(self.start - self.end, self.scroll() - self.end)) });
+        // Each step starts as soon as its slice of scroll is entered.
+        var s = into <= inf + 1 ? 0 : Math.min(steps, 1 + Math.floor((into - inf) / stepPx() + 0.0001));
+        if (instant) { tailStep = -1; }
+        goToTail(s);
+      }
     }
     render();
   }
