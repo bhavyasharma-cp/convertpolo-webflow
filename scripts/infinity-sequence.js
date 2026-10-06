@@ -1,187 +1,267 @@
 /*
  * Infinity sequence — "How it works" on the CRO page.
- * Figma: desktop 117:4421 (static) and prototype frames 1:10069 → 1:8432 → 1:8493 → 1:8554
- *        → 1:8615 → 1:8676 (camera along the path, 1.5s linear per step, 0.8s zoom-out).
- *        Mobile 123:6388 (no zoom in the prototype).
+ *
+ * Figma prototype (CRO flow from 1:9238). Desktop frames:
+ *   1:10189 → 1:10069  zoomed view slides up into place (0.8s ease-out) — here: the scroll-in
+ *   1:10069 → 1:8432 → 1:8493 → 1:8554 → 1:8615   steps 01→05, Smart Animate 1.5s linear each
+ *   1:8615  → 1:8676   zoom out to the whole infinity, 0.8s linear
+ *   1:8676  → 1:10281  infinity slides out left, testimonials slide in from the right, 1s ease-out
+ * Mobile frames: 1:588 (01) → 1:674 → 1:731 → 1:788 → 1:845 (05) → 1:902 (whole), 0.6s ease-out each.
+ * Each frame waits for a click in the prototype; on the site each step holds while you scroll.
+ *
+ * The zoomed frames are not a scaled copy of the whole infinity — the designer placed dots, text and
+ * videos per frame — so, like Smart Animate, this interpolates every element between the frames'
+ * recorded positions (KEYFRAMES below, read from the Figma file). Dots also pulse (65 ↔ 53px, 0.8s).
  *
  * Markup (Webflow):
- *   [data-cp="infinity"]                 the section (one per instance)
- *     .cro-how_component                 the 1233×707 stage (371×567 on mobile)
+ *   [data-cp="infinity"]                 the section
+ *     .cro-how_component                 the stage (1233×707 desktop, 371×567 mobile)
  *       svg[data-cp="infinity-svg"]      one per breakpoint; the visible one is used
- *         path[data-cp="infinity-track"]     grey path
- *         path[data-cp="infinity-progress"]  dark path, drawn as you scroll
- *         g[data-cp="infinity-dot"] ×5       dots, in path order 01→05
- *       [data-cp="infinity-step"] ×5     step text blocks, 01→05
+ *         path[data-cp="infinity-track"] / path[data-cp="infinity-progress"] / g[data-cp="infinity-dot"] ×5
+ *       [data-cp="infinity-step"] ×5     step text, 01→05
+ *       [data-cp="infinity-media"] ×5    video slot per step, 01→05 (hidden until the script shows it)
  *
- * Desktop: the section pins and scroll scrubs a camera move — zoomed in on step 01, travel
- * 02→05 drawing the dark path, then zoom out to the whole infinity. Step text keeps its size;
- * only the path and dots zoom. Mobile: no zoom; the path draws and the steps light up in turn.
- * Reduced motion: final state (whole path drawn, every step visible), no pinning.
- *
- * Needs GSAP + ScrollTrigger (loaded once, site-wide).
+ * Reduced motion: whole infinity, fully drawn, no pinning, no videos. Needs GSAP + ScrollTrigger.
  */
 (function () {
   'use strict';
 
-  var DESKTOP = '(min-width: 768px)';
-  var ZOOM = 5.402;          // Figma: path 751px → 4057px wide when zoomed
-  var DOT_ZOOM = 65 / 35;    // dots grow 35px → 65px, not by the full zoom
+  /*
+   * Keyframes, one per prototype frame, in stage pixels (frame position minus the stage's position
+   * in the whole-infinity frame). The last keyframe is the whole infinity = the static layout.
+   *   path:  [x, y, w, h] of the infinity's bounding box
+   *   dots:  [centreX, centreY, diameter] per step
+   *   text:  [x, y, width] per step
+   *   media: [x, y] per step (video slot); none in the whole view, so they fade out
+   * Desktop zoomed frames carry +32px x: the prototype's stage is at x 175, DEV READY's (the page) at 143.
+   */
+  var KEYFRAMES = {
+    desktop: [
+      { path: [-2412, 150, 4057, 1575], dots: [[776.5, 154.5, 65], [1537.5, 1336.5, 65], [640.5, 1696.5, 65], [-849.5, 494.5, 65], [-2342.5, 1265.5, 65]], text: [[760, 230, 361], [1608, 1320, 634], [624, 1464, 396], [-865, 286, 361], [-2198, 1241, 430]], media: [[-165, 96], [1211, 771], [-303, 1220], [-1782, 82], [-2342, 1428]] },
+      { path: [-3482, -586, 4057, 1575], dots: [[-293.5, -581.5, 65], [467.5, 600.5, 65], [-429.5, 960.5, 65], [-1919.5, -241.5, 65], [-3412.5, 529.5, 65]], text: [[-310, -506, 361], [538, 584, 634], [-446, 728, 396], [-1935, -450, 361], [-3268, 505, 430]], media: [[-1235, -640], [141, 35], [-1373, 484], [-2852, -654], [-3412, 692]] },
+      { path: [-2264, -946, 4057, 1575], dots: [[924.5, -941.5, 65], [1685.5, 240.5, 65], [788.5, 600.5, 65], [-701.5, -601.5, 65], [-2194.5, 169.5, 65]], text: [[908, -866, 361], [1756, 224, 634], [772, 368, 396], [-717, -810, 361], [-2050, 145, 430]], media: [[-17, -1000], [1359, -325], [-155, 124], [-1634, -1014], [-2194, 332]] },
+      { path: [-722, 129.2, 4057, 1575], dots: [[2466.5, 133.7, 65], [3227.5, 1315.7, 65], [2330.5, 1675.7, 65], [840.5, 473.7, 65], [-652.5, 1244.7, 65]], text: [[2450, 209.2, 361], [3298, 1299.2, 634], [2314, 1443.2, 396], [825, 265.2, 361], [-508, 1220.2, 430]], media: [[1525, 75.2], [2901, 750.2], [1387, 1199.2], [-92, 61.2], [-652, 1407.2]] },
+      { path: [176, -975.8, 4057, 1575], dots: [[3364.5, -971.3, 65], [4125.5, 210.7, 65], [3228.5, 570.7, 65], [1738.5, -631.3, 65], [245.5, 139.7, 65]], text: [[3348, -895.8, 361], [4196, 194.2, 634], [3212, 338.2, 396], [1723, -839.8, 361], [390, 115.2, 430]], media: [[2423, -1029.8], [3799, -354.8], [2285, 94.2], [806, -1043.8], [246, 302.2]] },
+      { path: [124.4, 211, 751, 291.5], dots: [[704.5, 211.5, 35], [874.5, 326.5, 35], [600.5, 447.5, 35], [233.5, 216.5, 35], [170.5, 464.5, 35]], text: [[632, 0, 450], [911, 294, 322], [573, 511, 324], [13, 41, 305], [0, 474, 280]], media: null }
+    ],
+    mobile: [
+      { path: [-1346, 90, 1640, 644], dots: [[21, 94, 40], [40, 726, 40], [-383, 550, 40], [-1180, 127, 40], [-1110, 720, 40]], text: [[19, -50, 332], [21, 784, 284], [-503, 618, 240], [-1200, -24, 286], [-1180, 761, 280]], media: [[82, 84], [22, 925], [-504, 755], [-1201, -655], [-1181, 877]] },
+      { path: [-1206, -700, 1640, 644], dots: [[161, -696, 40], [180, -64, 40], [-243, -240, 40], [-1040, -663, 40], [-970, -70, 40]], text: [[159, -840, 332], [11, -35, 350], [-363, -172, 240], [-1060, -814, 286], [-1040, -29, 280]], media: [[222, -746], [37, 84], [-364, -35], [-1061, -1445], [-1041, 87]] },
+      { path: [-756, -560, 1640, 644], dots: [[611, -556, 40], [630, 76, 40], [207, -100, 40], [-590, -523, 40], [-520, 70, 40]], text: [[609, -700, 332], [461, 105, 350], [36, -57, 240], [-610, -674, 286], [-590, 111, 280]], media: [[672, -606], [487, 223], [35, 81], [-611, -1305], [-591, 227]] },
+      { path: [-116, 670, 1640, 644], dots: [[1251, 674, 40], [1270, 1306, 40], [847, 1130, 40], [260, 677, 40], [120, 1300, 40]], text: [[1249, 530, 332], [1101, 1335, 350], [676, 1173, 240], [30, 556, 286], [50, 1341, 280]], media: [[1312, 624], [1127, 1453], [675, 1310], [29, -74], [49, 1457]] },
+      { path: [-254.1, -690, 1640, 644], dots: [[1112.9, -686, 40], [1131.9, -54, 40], [708.9, -230, 40], [121.9, -683, 40], [61.9, -50, 40]], text: [[1110.9, -830, 332], [962.9, -25, 350], [537.9, -187, 240], [-108.1, -804, 286], [5.9, -20, 280]], media: [[1173.9, -736], [988.9, 93], [536.9, -50], [-109.1, -1435], [5.9, 84]] },
+      { path: [14, 191, 334, 131], dots: [[284.5, 190.5, 21], [338.5, 289.5, 21], [206.5, 280.5, 21], [39.5, 204.5, 21], [75.5, 321.5, 21]], text: [[153, 3, 211], [251, 343, 120], [121, 331, 115], [4, 0, 123], [0, 345, 103]], media: null }
+    ]
+  };
+  // Reveal mask per keyframe (the prototype's "Mask group" ellipse): [centreX, centreY, w, h, rotation°].
+  var MASKS = {
+    desktop: [[774.5, 154.5, 27, 27, 0], [164.5, -38.5, 1417, 1417, 0], [1347.5, 5.5, 1631, 1631, 0],
+      [1982, 1172.2, 3008.1, 804.9, 39.5], [1756.6, -249.4, 5126.9, 1766.9, 14], [499, 359, 681.2, 781.9, 88.8]],
+    mobile: [[-525.2, 414.8, 1489.6, 1709.7, 88.8], [-385.2, -375.2, 1489.6, 1709.7, 88.8], [64.8, -235.2, 1489.6, 1709.7, 88.8],
+      [704.8, 994.8, 1489.6, 1709.7, 88.8], [566.6, -365.2, 1489.6, 1709.7, 88.8], [181.2, 257.1, 303.2, 348, 88.8]]
+  };
+  Object.keys(MASKS).forEach(function (k) { MASKS[k].forEach(function (m, i) { KEYFRAMES[k][i].mask = m; }); });
+  var DESKTOP_X_SHIFT = 32;
 
-  // Where each dot sits (stage coordinates) while the camera is on it, from the prototype frames.
-  var CAMERA = [
-    { x: 776.5, y: 154.5 },  // 01  frame 1:10069
-    { x: 467.5, y: 600.5 },  // 02  frame 1:8432
-    { x: 788.5, y: 600.5 },  // 03  frame 1:8493
-    { x: 840.5, y: 473.5 },  // 04  frame 1:8554
-    { x: 245.5, y: 139.5 }   // 05  frame 1:8615
-  ];
-  // Step text position relative to its dot centre while zoomed (prototype frames).
-  var STEP_ZOOM_OFFSET = [
-    { x: -16.5, y: 75.5 }, { x: 70.5, y: -16.5 }, { x: -16.5, y: -232.5 },
-    { x: -15.5, y: -208.5 }, { x: 144.5, y: -24.5 }
-  ];
+  var MODES = {
+    desktop: {
+      query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
+      media: { w: 870, h: 489 },
+      strokeZoomed: 15,                                // line thickness while zoomed (6 in the whole view)
+      stageTop: 203,                                   // stage top in the viewport (frame 1:8676)
+      travel: 1.5, travelEase: 'none',                 // 01→05
+      zoomOut: 0.8, zoomOutEase: 'none',               // 05 → whole
+      slideOut: { distance: 1430, duration: 1, ease: 'power1.out' }
+    },
+    mobile: {
+      query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
+      media: { w: 275, h: 598 },
+      strokeZoomed: 10,
+      stageTop: 139,                                   // frame 1:902
+      travel: 0.6, travelEase: 'power1.out',
+      zoomOut: 0.6, zoomOutEase: 'power1.out',
+      slideOut: null
+    }
+  };
+  var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
+  var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
+  var PULSE = { ratio: 53 / 65, duration: 0.8, ease: 'power1.out' };
 
   function log(msg, e) { try { console.debug('[infinity] ' + msg, e || ''); } catch (_) {} }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function all(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
 
   function visibleSvg(section) {
-    var svgs = section.querySelectorAll('svg[data-cp="infinity-svg"]');
-    for (var i = 0; i < svgs.length; i++) {
-      if (svgs[i].getBoundingClientRect().width > 0) return svgs[i];
-    }
+    var svgs = all(section, 'svg[data-cp="infinity-svg"]');
+    for (var i = 0; i < svgs.length; i++) if (svgs[i].getBoundingClientRect().width > 0) return svgs[i];
     return null;
-  }
-
-  // Fraction of the path length closest to a point (path-local coordinates).
-  function lengthAt(path, x, y) {
-    var total = path.getTotalLength(), best = 0, bestD = Infinity, steps = 400;
-    for (var i = 0; i <= steps; i++) {
-      var l = (total * i) / steps, p = path.getPointAtLength(l);
-      var d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
-      if (d < bestD) { bestD = d; best = l; }
-    }
-    return best;
-  }
-
-  function dotCenter(dot) {
-    var c = dot.querySelector('circle');
-    return { x: +c.getAttribute('cx'), y: +c.getAttribute('cy') };
   }
 
   function setup(section) {
     var svg = visibleSvg(section);
-    var stage = section.querySelector('.cro-how_component');
-    var steps = Array.prototype.slice.call(section.querySelectorAll('[data-cp="infinity-step"]'));
+    var stage = section.querySelector('.cro-how_component') || (svg && svg.parentNode.parentNode);
+    var steps = all(section, '[data-cp="infinity-step"]');
     if (!svg || !stage || steps.length !== 5) return null;
-    var track = svg.querySelector('[data-cp="infinity-track"]');
     var progress = svg.querySelector('[data-cp="infinity-progress"]');
-    var dots = Array.prototype.slice.call(svg.querySelectorAll('[data-cp="infinity-dot"]'));
-    if (!track || !progress || dots.length !== 5) return null;
-
-    var total = progress.getTotalLength();
-    var group = progress.parentNode;                       // <g transform="translate(..)">
-    var m = group.transform.baseVal.consolidate();
-    var ox = m ? m.matrix.e : 0, oy = m ? m.matrix.f : 0;
-    var sx = m ? m.matrix.a : 1, sy = m ? m.matrix.d : 1;
-    var centers = dots.map(dotCenter);
-    // Path length (from the path start) at each dot, made increasing in step order.
-    var lens = centers.map(function (c) { return lengthAt(progress, (c.x - ox) / sx, (c.y - oy) / sy); });
-    for (var k = 1; k < lens.length; k++) if (lens[k] < lens[k - 1]) lens[k] += total;
-    var start = lens[0];
-
-    progress.setAttribute('opacity', '1');
-    function draw(len) {
-      // Draw from the 01 dot forwards. The dash pattern is exactly one path long, so the dash
-      // wraps past the path's start point (which sits just after dot 01) instead of being cut off.
-      var drawn = Math.max(0, Math.min(len - start, total));
-      progress.style.strokeDasharray = drawn + ' ' + Math.max(total - drawn, 0.01);
-      progress.style.strokeDashoffset = String(-start);
-    }
-
-    return { svg: svg, stage: stage, steps: steps, dots: dots, centers: centers, lens: lens, total: total, draw: draw, start: start };
+    var dots = all(svg, '[data-cp="infinity-dot"]');
+    if (!progress || dots.length !== 5) return null;
+    var m = progress.parentNode.transform.baseVal.consolidate();
+    progress.setAttribute('opacity', '1');   // the dark path; the reveal mask decides how much shows
+    return {
+      svg: svg, stage: stage, steps: steps, dots: dots, progress: progress,
+      pathMatrix: m ? m.matrix : { a: 1, d: 1, e: 0, f: 0 },
+      media: all(section, '[data-cp="infinity-media"]'),
+      centers: dots.map(function (d) {
+        var c = d.querySelector('circle');
+        return { x: +c.getAttribute('cx'), y: +c.getAttribute('cy'), r: +c.getAttribute('r') };
+      })
+    };
   }
 
-  function initDesktop(section, gsap) {
+  function init(section, gsap, mode) {
     var c = setup(section);
-    if (!c) return log('desktop markup incomplete');
+    if (!c) return log('markup incomplete');
+    var media = c.media.length === 5 ? c.media : [];
 
-    // Everything the camera scales lives in one <g>; step text is HTML and only moves.
-    var world = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    while (c.svg.firstChild) world.appendChild(c.svg.firstChild);
-    c.svg.appendChild(world);
-    c.svg.querySelectorAll('path').forEach(function (p) { p.setAttribute('vector-effect', 'non-scaling-stroke'); });
+    // Keyframes: desktop zoomed frames shift onto the prototype's screen positions.
+    var K = mode.keyframes.map(function (k, i) {
+      if (mode !== MODES.desktop || i === mode.keyframes.length - 1) return k;
+      var sx = function (a) { var b = a.slice(); b[0] += DESKTOP_X_SHIFT; return b; };
+      return { path: sx(k.path), dots: k.dots.map(sx), text: k.text.map(sx), media: k.media && k.media.map(sx), mask: sx(k.mask) };
+    });
+    var last = K.length - 1, whole = K[last];
 
+    // The camera scales one <g> holding the path and dots; step text and videos are HTML and only move.
+    var world = c.svg.querySelector('g[data-cp-world]');
+    if (!world) {
+      world = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      world.setAttribute('data-cp-world', '');
+      while (c.svg.firstChild) world.appendChild(c.svg.firstChild);
+      c.svg.appendChild(world);
+    }
+    // Line thickness on screen: the frames' stroke while zoomed, the static layout's in the whole view.
+    // Drawn without vector-effect: non-scaling-stroke — with it, Chrome measures the progress dash in
+    // screen pixels and the dark part lands in the wrong place.
+    var strokes = all(c.svg, 'path').map(function (p) {
+      var gm = p.parentNode.transform.baseVal.consolidate(), gs = gm ? (gm.matrix.a + gm.matrix.d) / 2 : 1;
+      var w = +p.getAttribute('stroke-width') || 1, nonScaling = p.getAttribute('vector-effect') === 'non-scaling-stroke';
+      p.removeAttribute('vector-effect');
+      return { el: p, gs: gs, whole: nonScaling ? w : w * gs };
+    });
+    gsap.set(c.svg, { overflow: 'visible' });
+    gsap.set(section, { overflowX: 'clip' });
+    media.forEach(function (el) { gsap.set(el, { width: mode.media.w, height: mode.media.h, left: 0, top: 0 }); });
     var base = c.steps.map(function (s) { return { x: s.offsetLeft, y: s.offsetTop }; });
-    var rel = base.map(function (b, i) { return { x: b.x - c.centers[i].x, y: b.y - c.centers[i].y }; });
 
-    function cam(i) { return { tx: CAMERA[i].x - ZOOM * c.centers[i].x, ty: CAMERA[i].y - ZOOM * c.centers[i].y }; }
-    var state = { s: ZOOM, tx: cam(0).tx, ty: cam(0).ty, len: c.lens[0] };
+    // World transform for a keyframe: maps the whole-view path box onto the frame's path box.
+    function camera(k) {
+      var s = k.path[2] / whole.path[2];
+      return { s: s, tx: k.path[0] - s * whole.path[0], ty: k.path[1] - s * whole.path[1] };
+    }
+    // The dark path shows only inside an ellipse, exactly like the prototype's "Mask group": it grows
+    // and turns frame by frame. The clip lives in the path's own coordinates (inside its <g>).
+    var clipId = 'cp-infinity-clip-' + Math.random().toString(36).slice(2, 8);
+    var clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    var ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    clip.setAttribute('id', clipId);
+    clip.appendChild(ellipse);
+    c.progress.parentNode.insertBefore(clip, c.progress);
+    c.progress.setAttribute('clip-path', 'url(#' + clipId + ')');
+    var pm = c.pathMatrix;
 
+    // Halo pulse (prototype: dot variant Default ↔ Variant2, 0.8s ease-out, looping).
+    c.dots.forEach(function (d) {
+      var halo = d.querySelector('circle');
+      gsap.to(halo, { scale: PULSE.ratio, svgOrigin: halo.getAttribute('cx') + ' ' + halo.getAttribute('cy'),
+        duration: PULSE.duration, ease: PULSE.ease, yoyo: true, repeat: -1 });
+    });
+
+    var state = { p: 0 };
     function render() {
-      var z = (state.s - 1) / (ZOOM - 1); // 1 = fully zoomed, 0 = whole infinity
-      world.setAttribute('transform', 'translate(' + state.tx + ' ' + state.ty + ') scale(' + state.s + ')');
-      var dotScale = (1 + (DOT_ZOOM - 1) * z) / state.s;
-      c.dots.forEach(function (d, i) {
-        var p = c.centers[i];
-        d.setAttribute('transform', 'translate(' + p.x + ' ' + p.y + ') scale(' + dotScale + ') translate(' + -p.x + ' ' + -p.y + ')');
+      var i = Math.min(Math.floor(state.p), last - 1), f = state.p - i, a = K[i], b = K[i + 1];
+      var ca = camera(a), cb = camera(b);
+      var s = lerp(ca.s, cb.s, f), tx = lerp(ca.tx, cb.tx, f), ty = lerp(ca.ty, cb.ty, f);
+      world.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + s + ')');
+      strokes.forEach(function (p) {
+        var wa = i === last ? p.whole : mode.strokeZoomed, wb = i + 1 === last ? p.whole : mode.strokeZoomed;
+        p.el.setAttribute('stroke-width', lerp(wa, wb, f) / (p.gs * s));
       });
-      c.steps.forEach(function (s, i) {
-        var p = c.centers[i];
-        var off = { x: rel[i].x + (STEP_ZOOM_OFFSET[i].x - rel[i].x) * z, y: rel[i].y + (STEP_ZOOM_OFFSET[i].y - rel[i].y) * z };
-        var x = state.s * p.x + state.tx + off.x - base[i].x;
-        var y = state.s * p.y + state.ty + off.y - base[i].y;
-        gsap.set(s, { x: x, y: y });
+      c.dots.forEach(function (d, n) {
+        var x = lerp(a.dots[n][0], b.dots[n][0], f), y = lerp(a.dots[n][1], b.dots[n][1], f);
+        var size = lerp(a.dots[n][2], b.dots[n][2], f), p = c.centers[n];
+        var k = size / (p.r * 2) / s;
+        d.setAttribute('transform', 'translate(' + (x - tx) / s + ' ' + (y - ty) / s + ') scale(' + k + ') translate(' + -p.x + ' ' + -p.y + ')');
       });
-      c.draw(state.len);
+      c.steps.forEach(function (el, n) {
+        gsap.set(el, {
+          x: lerp(a.text[n][0], b.text[n][0], f) - base[n].x,
+          y: lerp(a.text[n][1], b.text[n][1], f) - base[n].y,
+          width: lerp(a.text[n][2], b.text[n][2], f)
+        });
+      });
+      media.forEach(function (el, n) {
+        var from = a.media[n], to = b.media ? b.media[n] : from;   // into the whole view: fade in place
+        gsap.set(el, { x: lerp(from[0], to[0], f), y: lerp(from[1], to[1], f), autoAlpha: b.media ? 1 : 1 - f });
+      });
+      // Mask: [centreX, centreY, width, height, rotation] on screen → path coordinates.
+      var mk = a.mask.map(function (v, q) { return lerp(v, b.mask[q], f); });
+      var lx = ((mk[0] - tx) / s - pm.e) / pm.a, ly = ((mk[1] - ty) / s - pm.f) / pm.d;
+      ellipse.setAttribute('rx', mk[2] / 2 / (s * pm.a));
+      ellipse.setAttribute('ry', mk[3] / 2 / (s * pm.d));
+      ellipse.setAttribute('transform', 'translate(' + lx + ' ' + ly + ') rotate(' + mk[4] + ')');
     }
 
-    // The zoomed path is far larger than the stage: let it spill out. Clip sideways only — while
-    // pinned, the space below the section is the (empty) pin spacer, so vertical spill is fine.
-    c.svg.style.overflow = 'visible';
-    section.style.overflowX = 'clip';
+    // Pin so the stage sits where Figma puts it (shorter screens: as low as still fits).
+    var stageInSection = c.stage.getBoundingClientRect().top - section.getBoundingClientRect().top;
+    function pinTop() {
+      var top = Math.max(0, Math.min(mode.stageTop, window.innerHeight - c.stage.offsetHeight - 20));
+      return Math.round(top - stageInSection);
+    }
+
+    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut + (mode.slideOut ? mode.slideOut.duration : 0);
+    var next = mode.slideOut ? section.nextElementSibling : null;
+    var onScroll = null;
     var tl = gsap.timeline({
-      defaults: { ease: 'none' },
       onUpdate: render,
       scrollTrigger: {
         trigger: section,
-        start: 'top top',
-        end: function () { return '+=' + Math.round(window.innerHeight * 4); },
+        start: function () { return 'top ' + pinTop() + 'px'; },
+        end: function () { return '+=' + Math.round(window.innerHeight * SCROLL_PER_UNIT * units); },
         pin: true,
         scrub: 0.6,
-        invalidateOnRefresh: true
+        invalidateOnRefresh: true,
+        onUpdate: function (self) { if (onScroll) onScroll(self); },
+        onRefresh: function (self) { if (onScroll) onScroll(self); }
       }
     });
-    for (var i = 1; i < 5; i++) {
-      var t = cam(i);
-      tl.to(state, { tx: t.tx, ty: t.ty, len: c.lens[i], duration: 1.5 });  // Figma: 1.5s linear per step
+    tl.to({}, { duration: HOLD });
+    for (var n = 1; n <= last; n++) {
+      var zoomOut = n === last;
+      tl.to(state, { p: n, duration: zoomOut ? mode.zoomOut : mode.travel, ease: zoomOut ? mode.zoomOutEase : mode.travelEase });
+      tl.to({}, { duration: HOLD });
     }
-    tl.to(state, { s: 1, tx: 0, ty: 0, len: c.start + c.total, duration: 0.8 }); // Figma: 0.8s linear zoom-out
-    render();
-    return tl;
-  }
 
-  function initMobile(section, gsap) {
-    var c = setup(section);
-    if (!c) return log('mobile markup incomplete');
-    var state = { len: c.lens[0] };
-    gsap.set(c.steps, { opacity: 0.3 });
-    gsap.set(c.steps[0], { opacity: 1 });
-    c.draw(state.len);
-    var tl = gsap.timeline({
-      defaults: { ease: 'none' },
-      onUpdate: function () { c.draw(state.len); },
-      scrollTrigger: { trigger: section, start: 'top 75%', end: 'bottom 35%', scrub: 0.6 }
-    });
-    for (var i = 1; i < 5; i++) {
-      tl.to(state, { len: c.lens[i], duration: 1 });
-      tl.to(c.steps[i], { opacity: 1, duration: 0.3 }, '<0.7');
+    if (next) {
+      // The next section (testimonials) slides in from the right as the infinity slides out left.
+      // It is pulled up by the section's height so it lands where the infinity was when the pin ends.
+      var o = mode.slideOut;
+      gsap.set(section.parentNode, { overflowX: 'clip' });
+      gsap.set(next, { marginTop: -section.offsetHeight, x: o.distance, position: 'relative', zIndex: 1 });
+      tl.to(c.stage, { x: -o.distance, duration: o.duration, ease: o.ease }, 'slide');
+      tl.to(next, { x: 0, duration: o.duration, ease: o.ease }, 'slide');
+      // While pinned, the next section rises by exactly the scroll left before the pin ends;
+      // offsetting it by that amount (unsmoothed, straight from the scroll position) keeps it level.
+      onScroll = function (self) {
+        var slidePx = window.innerHeight * SCROLL_PER_UNIT * o.duration;
+        gsap.set(next, { y: Math.max(-slidePx, Math.min(0, self.scroll() - self.end)) });
+      };
+      onScroll(tl.scrollTrigger);
     }
-    tl.to(state, { len: c.start + c.total, duration: 0.6 });
-    return tl;
+    render();
   }
 
   function showFinal(section) {
-    var c = setup(section);
-    if (c) c.draw(c.start + c.total);
+    setup(section);   // shows the whole dark path
   }
 
   function boot() {
@@ -200,8 +280,12 @@
         }
         gsap.registerPlugin(ScrollTrigger);
         (function (s) {
-          gsap.matchMedia().add(DESKTOP, function () { initDesktop(s, gsap); });
-          gsap.matchMedia().add('(max-width: 767px)', function () { initMobile(s, gsap); });
+          var mm = gsap.matchMedia();
+          Object.keys(MODES).forEach(function (k) {
+            mm.add(MODES[k].query, function () {
+              try { init(s, gsap, MODES[k]); } catch (e) { log(k + ' init failed', e); showFinal(s); }
+            });
+          });
         })(section);
       } catch (e) {
         log('init failed', e);
