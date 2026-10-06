@@ -210,6 +210,17 @@
     }
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  // Webflow injects its own GSAP late, so wait for GSAP + ScrollTrigger (max ~5s), then boot.
+  // If they never arrive, boot() falls back to the final still state.
+  function whenReady() {
+    if (!document.querySelector('[data-cp="infinity"]')) return;
+    var tries = 0;
+    (function check() {
+      if ((window.gsap && window.ScrollTrigger) || ++tries > 50) return boot();
+      setTimeout(check, 100);
+    })();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', whenReady);
+  else whenReady();
 })();
