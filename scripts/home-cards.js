@@ -4,7 +4,8 @@
  *
  * Markup (Webflow):
  *   [data-cp="cards"]            the row of cards
- *     [data-cp="card"]           one card; the open one carries the combo class `is-active`
+ *     [data-cp="card"]           one card; the open one carries the combo class `is-active`;
+ *                                `data-href` is its service page — clicking the open card goes there
  *       video (optional)         plays only while its card is open
  *
  * The open/narrow look (width 574 → 118, 0.6s ease-out) is CSS in the hero's embed,
@@ -50,16 +51,30 @@
 
     var swiped = false; // a swipe ends in a click; ignore that click
 
+    // An open card (every card on mobile) goes to its service page: `data-href` on the card.
+    function go(card, newTab) {
+      var href = card.getAttribute('data-href');
+      if (!href) return;
+      if (newTab) window.open(href, '_blank', 'noopener');
+      else window.location.href = href;
+    }
+    function isOpen(card) { return !mq.matches || card.classList.contains('is-active'); }
+
     cards.forEach(function (card) {
-      card.addEventListener('click', function () {
+      if (card.getAttribute('data-href')) card.setAttribute('role', 'link');
+      card.addEventListener('click', function (e) {
         if (swiped) { swiped = false; return; }
-        if (!mq.matches || card.classList.contains('is-active')) return;
+        if (isOpen(card)) return go(card, e.ctrlKey || e.metaKey);
         setActive(cards, card);
+      });
+      card.addEventListener('auxclick', function (e) {
+        if (e.button === 1 && isOpen(card)) go(card, true);
       });
       card.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
-        setActive(cards, card);
+        if (isOpen(card)) go(card, false);
+        else setActive(cards, card);
       });
     });
 
