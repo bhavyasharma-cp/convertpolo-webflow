@@ -1,24 +1,29 @@
 /*
  * Before / after comparison — the phone slider on the Landing Page Optimization page.
  *
- * Figma 117:5449, prototype 1:9580 → 1:9618: the "After" page (variation) covers the top 104px of the
- * "Before" page (control); dragging the bar reveals it down to 828px (Smart Animate 0.6s ease-out).
+ * Figma 117:5449 (desktop), 213:5332 (mobile). Prototype 1:9580 → 1:9618 (desktop): the "After"
+ * page (variation) covers the top 104px of the "Before" page (control); dragging the bar reveals
+ * it down to 828px (Smart Animate 0.6s ease-out). Mobile is the same at 290px wide: 77.33px → 619px,
+ * with the After layer starting 7.67px above the Before page.
  * Here the bar follows the pointer anywhere between the top and bottom of the phone; a click or tap
- * on the handle without dragging plays the prototype's move (104 ↔ 828) instead. Arrow keys move it
- * too, so the slider works without a pointer.
+ * on the handle without dragging plays the prototype's move (start ↔ open) instead. Arrow keys move
+ * it too, so the slider works without a pointer.
  *
  * Markup (Webflow):
- *   [data-cp="compare"]                 the phone (390×864)
- *     [data-cp="compare-after"]         the variation layer, clipped to the bar's position (its height)
- *     [data-cp="compare-bar"]           the white line + handle, positioned at the same height (its top)
+ *   [data-cp="compare"]                 the phone (390×864 desktop, 290×642.46 mobile)
+ *     [data-cp="compare-after"]         the variation layer, clipped to the bar's position (its height);
+ *                                       its CSS `top` is where it starts (−7.67px on mobile)
+ *     [data-cp="compare-bar"]           the white line + handle, positioned at the layer's bottom (its top)
  *       [data-cp="compare-handle"]      the DRAG pill
+ * Positions come from CSS custom properties on the phone, per breakpoint:
+ *   --compare-start (default 104px) and --compare-open (default 828px), measured from the layer's top.
  *
- * No GSAP needed. A failure leaves the static Figma state (104px) in place.
+ * No GSAP needed. A failure leaves the static Figma state in place.
  */
 (function () {
   'use strict';
 
-  var START = 104, OPEN = 828;    // Figma: After clipped to 104px (1:9580) and 828px (1:9618)
+  var DEFAULT_START = 104, DEFAULT_OPEN = 828;   // Figma desktop: After clipped to 104px (1:9580) and 828px (1:9618)
   var DURATION = 600;             // ms, Smart Animate 0.6s ease-out
   var KEY_STEP = 24;              // px per arrow key press
   var CLICK_SLOP = 4;             // px of movement before a press counts as a drag
@@ -43,13 +48,25 @@
     var handle = root.querySelector('[data-cp="compare-handle"]');
     if (!after || !bar || !handle) return log('markup incomplete');
     var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var pos = START, frame = 0;
+    var pos = 0, frame = 0, cfg = null;
 
-    function max() { return root.clientHeight || 864; }
+    function readPx(name, fallback) {
+      var v = parseFloat(getComputedStyle(root).getPropertyValue(name));
+      return isNaN(v) ? fallback : v;
+    }
+    // Breakpoint values from CSS: where the layer starts, its resting and open heights.
+    function config() {
+      return {
+        offset: after.offsetTop,
+        start: readPx('--compare-start', DEFAULT_START),
+        open: readPx('--compare-open', DEFAULT_OPEN)
+      };
+    }
+    function max() { return (root.clientHeight || 864) - cfg.offset; }
     function set(y) {
       pos = Math.max(0, Math.min(max(), y));
       after.style.height = pos + 'px';
-      bar.style.top = pos + 'px';
+      bar.style.top = (pos + cfg.offset) + 'px';
       handle.setAttribute('aria-valuenow', String(Math.round(pos / max() * 100)));
     }
     function animateTo(y) {
@@ -62,6 +79,7 @@
         if (t < 1) frame = requestAnimationFrame(step);
       })(t0);
     }
+    function toggle() { animateTo(pos < (cfg.start + cfg.open) / 2 ? cfg.open : cfg.start); }
 
     handle.setAttribute('role', 'slider');
     handle.setAttribute('tabindex', '0');
@@ -69,7 +87,18 @@
     handle.setAttribute('aria-orientation', 'vertical');
     handle.setAttribute('aria-valuemin', '0');
     handle.setAttribute('aria-valuemax', '100');
-    set(START);
+    cfg = config();
+    set(cfg.start);
+
+    // Crossing a breakpoint changes the phone's size: back to that breakpoint's resting state.
+    var lastKey = cfg.offset + '|' + cfg.start + '|' + cfg.open;
+    window.addEventListener('resize', function () {
+      var c = config(), key = c.offset + '|' + c.start + '|' + c.open;
+      if (key === lastKey) return;
+      lastKey = key; cfg = c;
+      cancelAnimationFrame(frame);
+      set(cfg.start);
+    });
 
     // Pointer: drag follows the pointer; a press without movement plays the prototype's move.
     var startY = 0, startPos = 0, dragging = false, pressed = false;
@@ -90,7 +119,7 @@
     function release() {
       if (!pressed) return;
       pressed = false;
-      if (!dragging) animateTo(pos < (START + OPEN) / 2 ? OPEN : START);
+      if (!dragging) toggle();
     }
     handle.addEventListener('pointerup', release);
     handle.addEventListener('pointercancel', function () { pressed = false; });
@@ -102,7 +131,7 @@
       else if (k === 'ArrowUp' || k === 'ArrowLeft') set(pos - KEY_STEP);
       else if (k === 'Home') animateTo(0);
       else if (k === 'End') animateTo(max());
-      else if (k === 'Enter' || k === ' ') animateTo(pos < (START + OPEN) / 2 ? OPEN : START);
+      else if (k === 'Enter' || k === ' ') toggle();
       else return;
       e.preventDefault();
     });

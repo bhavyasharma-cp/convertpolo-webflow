@@ -10,6 +10,9 @@
  *   1:10538 → 1:10871  next scroll: testimonials out left (80 → −1760), footer (form) fades in, 0.6s ease-out
  * Each frame waits for a click in the prototype; on the site each step holds while you scroll, and a
  * step's video playing to the end moves on to the next step.
+ * Mobile frames (390×844, the page 123:6963 scrolled to y 2763): 1:4057 → 1:4155 → 1:4253 → 1:4351 →
+ * 1:4449 (steps 01→05) → 1:4547 (whole circle), Smart Animate 0.6s ease-out each; then the page simply
+ * carries on (1:4727 is the testimonials scrolled into view).
  *
  * Like Smart Animate, this interpolates every element between the frames' recorded positions
  * (KEYFRAMES below, read from the Figma file). Dots also pulse (65 ↔ 53px, 0.8s).
@@ -22,25 +25,54 @@
  *         g[data-cp="circle-dot"] ×5
  *       [data-cp="circle-step"] ×5       step text, 01→05
  *       [data-cp="circle-media"] ×5      video slot per step, 01→05 (hidden until the script shows it),
- *         holding video[data-cp="circle-video"][data-media="desktop"]; only the current step's video plays
+ *         holding video[data-cp="circle-video"][data-media="desktop"|"mobile"] — the one for the
+ *         current breakpoint is shown; only the current step's video plays
  *
- * Mobile (≤767px) has no design yet: it shows the whole circle, still. Reduced motion: the same.
- * Needs GSAP + ScrollTrigger.
+ * Desktop follows the scroll; mobile steps one frame per slice of scroll, like the prototype's taps.
+ * Reduced motion: the whole circle, still. Needs GSAP + ScrollTrigger.
  */
 (function () {
   'use strict';
 
   /*
    * Keyframes, one per prototype frame, in stage pixels: the prototype frame's position minus the
-   * stage's top in the whole-circle frame (y 172 in 1:9955). The last keyframe is the whole circle
-   * = the page layout.
+   * stage's top in the whole-circle frame (desktop y 172 in 1:9955; mobile y 86, the stage being the
+   * page's 390 frame from y 2849). The last keyframe is the whole circle = the page layout.
    *   path:  [x, y, w, h] of the circle's bounding box
    *   dots:  [centreX, centreY, diameter] per step
    *   text:  [x, y, width] per step
-   *   media: [x, y] per step (980×540 video slot); none in the whole view, so they fade out
+   *   media: [x, y] per step (video slot); none in the whole view, so they fade out
    *   mask:  the "Mask group" disc that reveals the dark line: [centreX, centreY, w, h, rotation°]
+   *          (on mobile it covers the whole line in every frame)
    */
-  var KEYFRAMES = [
+  var KEYFRAMES = {};
+  KEYFRAMES.mobile = [
+    { path: [-415, -12, 1259, 1259], mask: [210, 611, 1360, 1360, 0],
+      dots: [[213, -12, 40], [772, 325, 40], [670, 1052, 40], [-239, 1052, 40], [-346, 332, 40]],
+      text: [[54, 28, 318], [827, 215, 212], [712, 1054, 293], [-487, 1082, 317], [-706, 280, 311]],
+      media: [[54, 148], [734, 371], [670, 1197], [-366, 1213], [-706, 418]] },
+    { path: [-1085, -236, 1259, 1259], mask: [-460, 387, 1360, 1360, 0],
+      dots: [[-457, -236, 40], [102, 101, 40], [0, 828, 40], [-909, 828, 40], [-1016, 108, 40]],
+      text: [[-616, -196, 318], [150, -6, 234], [42, 830, 293], [-1157, 858, 317], [-1376, 56, 311]],
+      media: [[-616, -76], [64, 137], [0, 973], [-1036, 989], [-1376, 194]] },
+    { path: [-945, -1060, 1259, 1259], mask: [-320, -437, 1360, 1360, 0],
+      dots: [[-317, -1060, 40], [242, -723, 40], [140, 4, 40], [-769, 4, 40], [-876, -716, 40]],
+      text: [[-476, -1020, 318], [290, -830, 234], [190, -21, 177], [-1017, 34, 317], [-1236, -768, 311]],
+      media: [[-476, -900], [204, -687], [58, 146], [-896, 165], [-1236, -630]] },
+    { path: [58, -1110, 1259, 1259], mask: [683, -487, 1360, 1360, 0],
+      dots: [[686, -1110, 40], [1245, -773, 40], [1143, -46, 40], [234, -46, 40], [127, -766, 40]],
+      text: [[527, -1070, 318], [1293, -880, 234], [1193, -71, 177], [28, -2, 317], [-233, -818, 311]],
+      media: [[527, -950], [1207, -737], [1061, 96], [28, 125], [-233, -680]] },
+    { path: [299, -283, 1259, 1259], mask: [924, 340, 1360, 1360, 0],
+      dots: [[927, -283, 40], [1486, 54, 40], [1384, 781, 40], [475, 781, 40], [352, 90, 40]],
+      text: [[768, -243, 318], [1534, -53, 234], [1434, 756, 177], [227, 811, 317], [26, 11, 282]],
+      media: [[768, -123], [1448, 90], [1302, 923], [227, 951], [18, 147]] },
+    { path: [61.086, 243, 254, 254], mask: [192.97, 374.65, 286.09, 286.09, 0],
+      dots: [[188.5, 242.5, 21], [304.5, 318.5, 21], [273.5, 464.5, 21], [103.5, 464.5, 21], [71.5, 318.5, 21]],
+      text: [[127, 0, 112], [261, 39, 117], [218, 514, 159], [20, 494, 163], [12, 51, 97]],
+      media: null }
+  ];
+  KEYFRAMES.desktop = [
     { path: [161, -259, 2525, 2525], mask: [646.5, 8.5, 27, 27, 0],
       dots: [[645.5, 8.5, 65], [1903.5, -163.5, 65], [2683.5, 921.5, 65], [2241.5, 1964.5, 65], [378.5, 1710.5, 65]],
       text: [[752, -8, 443], [1587, -127, 408], [2170, 783, 417], [1722, 1770, 417], [566, 1676, 417]],
@@ -67,17 +99,29 @@
       media: null }
   ];
 
-  var MODE = {
-    query: '(min-width: 768px)',
-    media: { w: 980, h: 540 },                       // video slot (Figma 980×540)
-    strokeZoomed: 15,                                // line thickness while zoomed (10 in the whole view)
-    stageTop: 172, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:9955
-    travel: 1.2, zoomOut: 1.2,                       // 01→05 and 05 → whole, Smart Animate 1.2s ease-out
-    // 1:9955 → 1:10538 (0.6s ease-out): circle fades, testimonials 1460 → 80 with their cards 127px
-    // below the stage top (299 vs 172). Then 1:10538 → 1:10871 (0.6s ease-out): testimonials leave
-    // left (80 → −1760 at 1440), footer fades in with its heading 8px below the stage top (180 vs 172).
-    // Distances are measured on the page so the slides start/end just off screen at any width.
-    tail: { cardsBelowStage: 127, headingBelowStage: 8, duration: 0.6, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6 }
+  var MODES = {
+    desktop: {
+      name: 'desktop', query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
+      media: { w: 980, h: 540 },                       // video slot (Figma 980×540)
+      strokeZoomed: 15,                                // line thickness while zoomed (10 in the whole view)
+      stageTop: 172, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:9955
+      travel: 1.2, zoomOut: 1.2,                       // 01→05 and 05 → whole, Smart Animate 1.2s ease-out
+      // 1:9955 → 1:10538 (0.6s ease-out): circle fades, testimonials 1460 → 80 with their cards 127px
+      // below the stage top (299 vs 172). Then 1:10538 → 1:10871 (0.6s ease-out): testimonials leave
+      // left (80 → −1760 at 1440), footer fades in with its heading 8px below the stage top (180 vs 172).
+      // Distances are measured on the page so the slides start/end just off screen at any width.
+      tail: { cardsBelowStage: 127, headingBelowStage: 8, duration: 0.6, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6 }
+    },
+    mobile: {
+      name: 'mobile', query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
+      media: { w: 271, h: 593 },                       // portrait video slot (Figma 271×593)
+      strokeZoomed: 10,                                // 6 in the whole view
+      stageTop: 86, frameHeight: 844,                  // frame 1:4547 (390×844)
+      // Stepped, like the prototype: each step owns a slice of the scroll, and entering it plays
+      // the frame's own transition (Smart Animate 0.6s ease-out) instead of following the finger.
+      stepped: { duration: 0.6, scrollPerStep: 0.5 },
+      tail: null
+    }
   };
   var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
   var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
@@ -163,11 +207,11 @@
     });
   }
 
-  function init(section, gsap) {
+  function init(section, gsap, mode) {
     var c = setup(section);
     if (!c) return log('markup incomplete');
     var media = c.media.length === 5 ? c.media : [];
-    var K = KEYFRAMES, last = K.length - 1;
+    var K = mode.keyframes, last = K.length - 1;
 
     // The camera scales one <g> holding the circle and dots; step text and videos are HTML and only move.
     var world = c.svg.querySelector('g[data-cp-world]');
@@ -184,7 +228,7 @@
     });
     gsap.set(c.svg, { overflow: 'visible' });
     gsap.set(section, { overflowX: 'clip' });
-    media.forEach(function (el) { gsap.set(el, { width: MODE.media.w, height: MODE.media.h, left: 0, top: 0 }); });
+    media.forEach(function (el) { gsap.set(el, { width: mode.media.w, height: mode.media.h, left: 0, top: 0 }); });
     var base = c.steps.map(function (s) { return { x: s.offsetLeft, y: s.offsetTop }; });
 
     // World transform for a keyframe: maps the page's circle box onto the frame's circle box.
@@ -205,10 +249,17 @@
         duration: PULSE.duration, ease: PULSE.ease, yoyo: true, repeat: -1 });
     });
 
+    // Each slot holds a desktop and a mobile cut; show this breakpoint's, hide (and stop) the other.
     var videos = media.map(function (el) {
-      var v = el.querySelector('video[data-cp="circle-video"]');
-      if (v && v.preload === 'none') v.preload = 'auto';
-      return v;
+      var mine = null;
+      all(el, 'video[data-cp="circle-video"]').forEach(function (v) {
+        var match = (v.getAttribute('data-media') || mode.name) === mode.name;
+        if (match && !mine) mine = v;
+        else { try { v.pause(); } catch (_) {} }
+        gsap.set(v, { display: match && v === mine ? 'block' : 'none' });
+      });
+      if (mine && mine.preload === 'none') mine.preload = 'auto';
+      return mine;
     });
 
     // Only the current step's video plays, from the start each time its step is reached.
@@ -230,7 +281,7 @@
       var s = lerp(ca.s, cb.s, f), tx = lerp(ca.tx, cb.tx, f), ty = lerp(ca.ty, cb.ty, f);
       world.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + s + ')');
       strokes.forEach(function (p) {
-        var wa = i === last ? p.whole : MODE.strokeZoomed, wb = i + 1 === last ? p.whole : MODE.strokeZoomed;
+        var wa = i === last ? p.whole : mode.strokeZoomed, wb = i + 1 === last ? p.whole : mode.strokeZoomed;
         p.el.setAttribute('stroke-width', lerp(wa, wb, f) / (p.gs * s));
       });
       c.dots.forEach(function (d, n) {
@@ -263,15 +314,58 @@
     var stageInSection = c.stage.getBoundingClientRect().top - section.getBoundingClientRect().top;
     function pinTop() {
       var vh = window.innerHeight;
-      var top = Math.max(0, Math.min(MODE.stageTop + (vh - MODE.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
+      var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
       return Math.round(top - stageInSection);
+    }
+
+    // Step videos play once; when one ends and the visitor hasn't scrolled, scroll on to the next
+    // step at the prototype's own pace (`targetY` gives the resting scroll position of a step).
+    var auto = null;
+    function advanceWhenVideoEnds(pin, targetY, seconds) {
+      videos.forEach(function (v, k) {
+        if (!v) return;
+        v.loop = false;
+        v.addEventListener('ended', function () {
+          if (auto || !pin.isActive || playing !== k || Math.abs(state.p - k) > 0.02) return;
+          auto = true;
+          autoScroll(gsap, targetY(k + 1), seconds(k + 1), function () { auto = null; });
+        });
+      });
+    }
+
+    if (mode.stepped) {
+      // One slice of scroll per step (01…05). Crossing into a slice plays the prototype's transition
+      // to that frame; fast flicks go straight to the frame that was reached. Leaving the last slice
+      // ends the pin and plays the zoom out to the whole circle, so the page carries on below it as
+      // in 1:4547 → 1:4727 (testimonials right under the circle).
+      var zones = last, current = 0, st = mode.stepped;
+      var zonePx = function () { return Math.round(window.innerHeight * st.scrollPerStep); };
+      var stepPin = window.ScrollTrigger.create({
+        trigger: section,
+        start: function () { return 'top ' + pinTop() + 'px'; },
+        end: function () { return '+=' + zonePx() * zones; },
+        pin: true,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        onUpdate: function (self) {
+          var target = Math.min(last, Math.floor(self.progress * zones));
+          if (target === current) return;
+          current = target;
+          gsap.to(state, { p: target, duration: st.duration, ease: figmaEaseOut, overwrite: true, onUpdate: render });
+        }
+      });
+      advanceWhenVideoEnds(stepPin,
+        function (k) { return k < last ? stepPin.start + (k + 0.5) * zonePx() : stepPin.end + 1; },
+        function () { return st.duration; });
+      render();
+      return;
     }
 
     // After the whole circle (prototype 1:9955 → 1:10538 → 1:10871): the circle fades out as the next
     // section (testimonials) slides in from the right; then the testimonials slide out left and the
     // section after them (the footer) fades in where they were. Both are pulled up next to the stage,
     // measured now from the natural layout, before pinning.
-    var o = MODE.tail;
+    var o = mode.tail;
     var next = section.nextElementSibling;
     var after = next && next.parentNode ? next.parentNode.nextElementSibling : null;
     var afterHeading = after ? after.querySelector('h1, h2, h3') : null;
@@ -296,11 +390,11 @@
 
     // The circle part (01 → 05 → whole) follows the scroll, smoothed like a 0.6s scrub; each step's
     // travel uses the prototype's ease-out.
-    var units = HOLD * 6 + MODE.travel * 4 + MODE.zoomOut;
+    var units = HOLD * 6 + mode.travel * 4 + mode.zoomOut;
     var tl = gsap.timeline({ paused: true, onUpdate: render });
     tl.to({}, { duration: HOLD });
     for (var n = 1; n <= last; n++) {
-      tl.to(state, { p: n, duration: n === last ? MODE.zoomOut : MODE.travel, ease: figmaEaseOut });
+      tl.to(state, { p: n, duration: n === last ? mode.zoomOut : mode.travel, ease: figmaEaseOut });
       tl.to({}, { duration: HOLD });
     }
 
@@ -351,21 +445,11 @@
       onUpdate: function (self) { update(self, false); }
     });
 
-    // Step videos play once; when one ends and the visitor hasn't scrolled, scroll on to the next
-    // step (01 → … → 05 → whole circle) at the prototype's own pace.
-    var holdTime = function (k) { return k < last ? HOLD / 2 + k * (HOLD + MODE.travel) : units - HOLD / 2; };
-    var auto = null;
-    videos.forEach(function (v, k) {
-      if (!v) return;
-      v.loop = false;
-      v.addEventListener('ended', function () {
-        if (auto || !pin.isActive || playing !== k || Math.abs(state.p - k) > 0.02) return;
-        var to = k + 1;
-        auto = true;
-        autoScroll(gsap, pin.start + (holdTime(to) / units) * circlePx(), to === last ? MODE.zoomOut : MODE.travel,
-          function () { auto = null; });
-      });
-    });
+    // Resting scroll position of step k (01 → … → 05 → whole), mid-way through its hold.
+    var holdTime = function (k) { return k < last ? HOLD / 2 + k * (HOLD + mode.travel) : units - HOLD / 2; };
+    advanceWhenVideoEnds(pin,
+      function (k) { return pin.start + (holdTime(k) / units) * circlePx(); },
+      function (k) { return k === last ? mode.zoomOut : mode.travel; });
 
     function update(self, instant) {
       var into = self.scroll() - self.start, span = circlePx();
@@ -408,8 +492,11 @@
         // Phones resize the viewport as the address bar hides/shows; don't re-layout pins for that.
         ScrollTrigger.config({ ignoreMobileResize: true });
         (function (s) {
-          gsap.matchMedia().add(MODE.query, function () {
-            try { init(s, gsap); } catch (e) { log('init failed', e); showFinal(s); }
+          var mm = gsap.matchMedia();
+          Object.keys(MODES).forEach(function (k) {
+            mm.add(MODES[k].query, function () {
+              try { init(s, gsap, MODES[k]); } catch (e) { log(k + ' init failed', e); showFinal(s); }
+            });
           });
         })(section);
       } catch (e) {
