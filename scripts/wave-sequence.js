@@ -263,7 +263,9 @@
     });
 
     // Only the current step's video plays, from the start each time its step is reached.
-    var playing = -1;
+    // Videos play only while the section is pinned, so step 01 starts when the visitor gets there.
+    var playing = -1, engaged = false;
+    function engage(self) { engaged = self.isActive; render(); }
     function playStep(n) {
       if (n === playing) return;
       try {
@@ -275,7 +277,7 @@
 
     var state = { p: 0 };
     function render() {
-      playStep(state.p < last - 0.5 ? Math.round(state.p) : -1);
+      playStep(engaged && state.p < last - 0.5 ? Math.round(state.p) : -1);
       var i = Math.min(Math.floor(state.p), last - 1), f = state.p - i, a = K[i], b = K[i + 1];
       var ca = camera(a), cb = camera(b);
       var s = lerp(ca.s, cb.s, f), tx = lerp(ca.tx, cb.tx, f), ty = lerp(ca.ty, cb.ty, f);
@@ -348,6 +350,7 @@
         pin: true,
         anticipatePin: 1,
         invalidateOnRefresh: true,
+        onToggle: engage,
         onUpdate: function (self) {
           var target = Math.min(last, Math.floor(self.progress * zones));
           if (target === current) return;
@@ -442,6 +445,7 @@
       end: function () { return '+=' + Math.round(wavePx() + steps * stepPx()); },
       pin: true,
       invalidateOnRefresh: true,
+      onToggle: engage,
       onRefresh: function (self) { update(self, true); },
       onUpdate: function (self) { update(self, false); }
     });
