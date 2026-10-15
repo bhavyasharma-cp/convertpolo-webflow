@@ -14,6 +14,10 @@
  *   4. Result panel: 1440x649 full bleed shrinking to the 1180x532 container (uniform 1.2203x).
  * Steps 3 and 4 repeat per experiment — 01, 02 and 03 all behave the same.
  *
+ * Those distances are desktop pixels, so below 1440 they are scaled by the viewport width —
+ * on a 390px phone the phones come in from 173px rather than 640px, which keeps the same move
+ * without starting an entire screen-width away.
+ *
  * Markup (Webflow), found by data attribute so the blocks can be reused anywhere:
  *   [data-cp="study-hero"]              hero section
  *     [data-study="hero-media"]         cover image wrapper (scaled)
@@ -66,6 +70,11 @@
     if (reduced) return log('reduced motion: final state kept');
 
     var base = { duration: DURATION, ease: easeOut };
+    // The slide distances are read off the 1440 prototype; narrower screens use the same
+    // move scaled down, so nothing starts a whole screen-width outside the viewport.
+    var ratio = Math.min(1, (window.innerWidth || 1440) / 1440);
+    function shift(name) { return Math.round(SHIFT[name] * ratio); }
+
     // Each block plays once, when it has clearly entered the viewport.
     function onEnter(el, vars) {
       var trigger = { trigger: el, start: 'top 85%', once: true };
@@ -83,14 +92,14 @@
     // 2. Intro cards.
     ['overview', 'challenge', 'solution'].forEach(function (name) {
       all('[data-study="' + name + '"]').forEach(function (el) {
-        onEnter(el, { x: SHIFT[name], opacity: 0 });
+        onEnter(el, { x: shift(name), opacity: 0 });
       });
     });
 
     // 3. Every experiment: phones from the left, text from the right.
     ['images', 'content'].forEach(function (name) {
       all('[data-study="' + name + '"]').forEach(function (el) {
-        onEnter(el, { x: SHIFT[name], opacity: 0 });
+        onEnter(el, { x: shift(name), opacity: 0 });
       });
     });
 
