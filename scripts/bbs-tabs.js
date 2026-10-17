@@ -27,6 +27,9 @@
     if (!tabs.length || tabs.length !== panels.length) return;
 
     var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Below 768px the block is an accordion (Figma 1:2453) and the panels change height,
+    // so rotating on a timer would shift the page under the reader. Tap only.
+    var accordion = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
     var index = 0;
     var timer = null;
 
@@ -43,14 +46,14 @@
 
     function schedule() {
       if (timer) clearTimeout(timer);
-      if (still) return; // reduced motion: hold the first tab, no auto-advance
+      if (still || accordion) return; // hold this tab; no auto-advance
       timer = setTimeout(function () { show(index + 1, true); }, HOLD);
     }
 
     tabs.forEach(function (tab, i) {
       tab.setAttribute('role', 'tab');
       tab.setAttribute('tabindex', '0');
-      tab.addEventListener('mouseenter', function () { show(i, true); });
+      if (!accordion) tab.addEventListener('mouseenter', function () { show(i, true); });
       tab.addEventListener('click', function () { show(i, true); });
       tab.addEventListener('focus', function () { show(i, true); });
     });
