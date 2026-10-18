@@ -4,8 +4,13 @@
  * mockup as a second slide, with two dots underneath.
  *
  * The scrolling and snapping are CSS (overflow-x + scroll-snap on
- * [data-cp="bbs-slides"]); this only keeps the dots in step with the position,
- * and lets a dot scroll to its slide.
+ * [data-cp="bbs-slides"]); this keeps the dots in step with the position, lets a
+ * dot scroll to its slide, and sizes the scroller to whichever slide is showing.
+ *
+ * That last part matters on step 04, where Figma gives the component two states:
+ * the cart screen is only 295 tall, so the number and copy sit right under it,
+ * while the phone slide is 547 and pushes them down (variants 1:5201 / 1:5214).
+ * Without it the phone would simply overlap the copy.
  *
  * Markup (Webflow):
  *   [data-cp="bbs-slides"]        the scroller; its element children are the slides
@@ -32,6 +37,14 @@
         dot.className = n === i ? ON : OFF;
         dot.setAttribute('aria-current', n === i ? 'true' : 'false');
       });
+      fit(slides[i]);
+    }
+
+    // Only while the scroller is actually a carousel — above 767px it is a
+    // plain positioned block and must keep the height its class gives it.
+    function fit(slide) {
+      if (!slide || getComputedStyle(track).overflowX !== 'auto') return;
+      track.style.height = slide.offsetHeight + 'px';
     }
 
     function nearest() {
@@ -68,6 +81,10 @@
     });
 
     mark(0);
+    window.addEventListener('resize', function () {
+      if (getComputedStyle(track).overflowX !== 'auto') { track.style.height = ''; return; }
+      mark(nearest());
+    });
   }
 
   function start() {
