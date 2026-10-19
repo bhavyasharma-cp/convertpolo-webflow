@@ -10,11 +10,16 @@
  *
  * The geometry is not here — it lives in the page embed as .is-slot-0 ... .is-slot-6,
  * which set --cp-x / --cp-y / --cp-s per breakpoint and decide which slots show a
- * caption. This file only rotates those classes, so the page renders the opening
- * Figma frame exactly even if the script never loads.
+ * caption. This file only rotates those classes.
+ *
+ * The people come from the Team CMS collection, sorted by Order, so the markup is one
+ * Collection List item and the positions can't be written into it. Until the script
+ * marks the stage .is-live the embed positions each member by its place in the list
+ * instead, which is the same opening Figma frame — so a page that never runs this
+ * script still renders correctly.
  *
  * Markup (Webflow):
- *   [data-cp="story-team"]   wraps .story_stage > .story_member * N
+ *   [data-cp="story-team"]   wraps .story_stage > Collection List > .story_member * N
  *
  * There are more members (10) than slots (7). A member past the last slot is
  * parked on slot 0 — both ends sit off canvas, so the wrap is invisible as long as
@@ -88,6 +93,11 @@
 
     fit();
     window.addEventListener('resize', fit);
+
+    // Take the opening frame over from the embed's list-order rules. The values are the
+    // same, so nothing moves — but from here on the slot classes are what count.
+    for (var i = 0; i < total; i++) place(members[i], i, true);
+    stage.classList.add('is-live');
 
     var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
     if (still && still.matches) return; // the opening frame is the final still state
