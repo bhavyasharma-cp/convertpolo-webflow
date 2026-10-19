@@ -31,11 +31,21 @@
   var SLOTS = 7;                 // .is-slot-0 ... .is-slot-6
   var BASE = { w: 1440, h: 1820 };
   var BASE_M = { w: 390, h: 1107 };
-  var FIRST = 1200, STEP = 1800;      // Figma: 1.2s, then 0.8s hold + 1s move
-  var FIRST_M = 1500, STEP_M = 1600;  // mobile: 1.5s, then 0.8s hold + 0.8s move
+  var FIRST = 1200, FIRST_M = 1500;   // Figma's opening pause: 1.2s desktop, 1.5s mobile
 
   function isMobile() {
     return window.innerWidth < 768;
+  }
+
+  // How long a hop takes and how long a face then holds still both come from the page
+  // embed (--cp-move / --cp-hold), so the CSS transition and this timer can never drift
+  // apart and the pace is retuned in one place. Figma's own values are 1s / 0.8s.
+  function seconds(stage, name, fallback) {
+    var raw = '';
+    try { raw = getComputedStyle(stage).getPropertyValue(name).trim(); } catch (err) { /* ignore */ }
+    var n = parseFloat(raw);
+    if (!n) return fallback;
+    return raw.indexOf('ms') > -1 ? n : n * 1000;
   }
 
   function init(root) {
@@ -78,7 +88,7 @@
         var was = (i + previous) % total;
         place(members[i], (i + tick) % total, was === SLOTS - 1);
       }
-      schedule(isMobile() ? STEP_M : STEP);
+      schedule(seconds(stage, '--cp-move', 1000) + seconds(stage, '--cp-hold', 800));
     }
 
     function schedule(delay) {
