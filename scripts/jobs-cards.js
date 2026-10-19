@@ -29,6 +29,21 @@
     var startX = 0;
     var startScroll = 0;
 
+    // Snapping is suspended while dragging, and Chrome does not reliably re-snap
+    // when the property comes back, so put the nearest card on the gutter here.
+    function settle() {
+      var pad = parseFloat(getComputedStyle(track).paddingLeft) || 0;
+      var best = null;
+      var bestGap = Infinity;
+      Array.prototype.forEach.call(track.children, function (card) {
+        var gap = Math.abs(card.offsetLeft - pad - track.scrollLeft);
+        if (gap < bestGap) { bestGap = gap; best = card; }
+      });
+      if (!best) return;
+      var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      track.scrollTo({ left: best.offsetLeft - pad, behavior: still ? 'auto' : 'smooth' });
+    }
+
     function end() {
       if (!down) return;
       down = false;
@@ -36,7 +51,10 @@
         dragging = false;
         // let the class drop after this event, so the click it would have
         // fired on a card is still swallowed by pointer-events: none
-        window.setTimeout(function () { track.classList.remove('is-dragging'); }, 0);
+        window.setTimeout(function () {
+          track.classList.remove('is-dragging');
+          settle();
+        }, 0);
       }
     }
 
