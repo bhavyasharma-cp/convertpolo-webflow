@@ -21,7 +21,7 @@
  * Markup (Webflow):
  *   section[data-cp="cases"]
  *     .cro-cases_list            the row; the Collection List itself
- *       .w-dyn-item              what actually travels
+ *       .w-dyn-item              display:contents, so the card is still the flex child
  *         [data-cp="case"]       the card
  *     [data-cp="case-dots"] > i  one per card, `.is-active` marks the current one
  *
@@ -54,11 +54,11 @@
     return isNaN(value) || !value ? FALLBACK_PAD : value;
   }
 
-  function build(section, row, units, dots) {
+  function build(section, row, cards, dots) {
     // Measure at rest, in viewport coordinates.
     gsap.set(row, { x: 0 });
-    var first = units[0].getBoundingClientRect();
-    var last = units[units.length - 1].getBoundingClientRect();
+    var first = cards[0].getBoundingClientRect();
+    var last = cards[cards.length - 1].getBoundingClientRect();
     var gutter = pad(section);
 
     var from = gutter - first.left;                            // first card to the left edge
@@ -105,14 +105,16 @@
 
   function init(section) {
     var cards = Array.prototype.slice.call(section.querySelectorAll('[data-cp="case"]'));
-    // A Collection List wraps every card in a .w-dyn-item, so the thing that travels is
-    // the item, not the card, and the row is the list rather than the card's own parent.
-    var units = cards.map(function (card) {
-      return card.closest('.w-dyn-item') || card;
-    });
-    if (units.length < 2) return;
-    var row = units[0].parentNode;
-    var dots = tune(section.querySelector('[data-cp="case-dots"]'), units.length);
+    if (cards.length < 2) return;
+
+    // A Collection List wraps every card in a .w-dyn-item. The section's embed gives that
+    // wrapper `display: contents` so the card itself stays the flex child the layout
+    // sizes — which also leaves the wrapper with no box of its own, so the cards are what
+    // we measure and the row is the list one step above the wrapper.
+    var row = cards[0].parentNode;
+    if (row.classList.contains('w-dyn-item')) row = row.parentNode;
+
+    var dots = tune(section.querySelector('[data-cp="case-dots"]'), cards.length);
 
     var mq = window.matchMedia(DESKTOP);
     var tween = null;
@@ -125,7 +127,7 @@
       }
       gsap.set(row, { clearProps: 'transform' });
       if (!mq.matches || reduced()) return;     // phones keep their native snap strip
-      tween = build(section, row, units, dots);
+      tween = build(section, row, cards, dots);
     }
 
     apply();
