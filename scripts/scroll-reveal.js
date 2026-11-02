@@ -19,6 +19,11 @@
  *   - nested matches. Only the outermost block in any branch animates, so a card does not
  *     fade in while its own heading fades in on top of it.
  *
+ * Repeated things move as whole things. A card lifting in one piece reads as deliberate;
+ * its image, its heading and its quote each lifting separately reads as a bug. So the
+ * items of a list or grid are taken as the units, and only loose content outside them is
+ * picked up element by element. Items in the same row start a beat apart.
+ *
  * Opt out of a single element with data-cp-reveal="off".
  *
  * Nothing is hidden in CSS, only by this script, so a page whose JS fails to load renders
@@ -28,8 +33,9 @@
   'use strict';
 
   var RISE = 32;          // px the block travels up
-  var START = 'top 90%';
-  var END = 'top 55%';
+  var START = 90;         // % of the viewport where it begins
+  var END = 55;           // ... and where it has arrived
+  var STAGGER = 3;        // % of the viewport between items of the same row
   var SCRUB = 0.6;        // the lag that gives it the weight; mango-media uses 0.5
 
   // Sections that animate themselves. Everything inside one of these is off limits.
@@ -43,16 +49,22 @@
     '[data-cp="menu"]', '[data-cp="menu-panel"]', '[data-cp="blog-filter"]',
     '[data-cp-reveal="off"]',
     '.section_cro-cases',          // case-carousel.js drives this one
-    'header', 'nav', '.w-form'
+    'header', 'nav', '.w-form',
+    '[aria-hidden="true"]'         // decorative scaffolding, e.g. .cro_grid
   ].join(',');
 
-  // Coarse content blocks, not every node — a heading, a paragraph, a picture, a card.
+  // Lists and grids of repeated things. Their items are the units, not their innards.
+  var GROUPS = [
+    '.w-dyn-items',
+    '[class*="_list"]', '[class*="_grid"]', '[class*="_cards"]', '[class*="_row"]'
+  ].join(',');
+
+  // Loose content outside those: a heading, a paragraph, a picture, a button.
   var PICK = [
     'h1', 'h2', 'h3', 'h4',
     'p', 'blockquote', 'figure', 'img',
     '.button',
-    '[class*="_card"]', '[class*="-card"]',
-    '[class*="_item"]', '[class*="_tile"]'
+    '[class*="_card"]', '[class*="-card"]', '[class*="_tile"]'
   ].join(',');
 
   function reduced() {
@@ -63,27 +75,45 @@
     }
   }
 
+  function usable(el, fold) {
+    if (el.closest(SKIP)) return false;
+    var box = el.getBoundingClientRect();
+    if (!box.width || !box.height) return false;      // hidden or collapsed
+    if (box.top < fold) return false;                 // already on screen: leave it be
+    return getComputedStyle(el).position !== 'fixed';
+  }
+
   function collect() {
-    var all = Array.prototype.slice.call(document.querySelectorAll(PICK));
     var fold = window.innerHeight;
-    var keep = [];
+    var units = [];
+    var i, j;
 
-    for (var i = 0; i < all.length; i++) {
-      var el = all[i];
-      if (el.closest(SKIP)) continue;
-
-      var box = el.getBoundingClientRect();
-      if (!box.width || !box.height) continue;        // hidden or collapsed
-      if (box.top < fold) continue;                   // already on screen: leave it be
-      if (getComputedStyle(el).position === 'fixed') continue;
-
-      keep.push(el);
+    // The items of every list and grid, each carrying its place in the row for the beat.
+    var groups = document.querySelectorAll(GROUPS);
+    for (i = 0; i < groups.length; i++) {
+      if (groups[i].closest(SKIP)) continue;
+      var items = groups[i].children;
+      for (j = 0; j < items.length; j++) {
+        if (usable(items[j], fold)) units.push({ el: items[j], nth: j });
+      }
     }
 
-    // Outermost only. The list is in document order, so an ancestor is always seen first.
-    return keep.filter(function (el) {
-      for (var j = 0; j < keep.length; j++) {
-        if (keep[j] !== el && keep[j].contains(el)) return false;
+    // Loose content that is not part of one of those items.
+    var loose = document.querySelectorAll(PICK);
+    for (i = 0; i < loose.length; i++) {
+      var el = loose[i];
+      if (!usable(el, fold)) continue;
+      var inside = false;
+      for (j = 0; j < units.length; j++) {
+        if (units[j].el === el || units[j].el.contains(el)) { inside = true; break; }
+      }
+      if (!inside) units.push({ el: el, nth: 0 });
+    }
+
+    // Outermost only, so nothing animates inside something else that is animating.
+    return units.filter(function (u) {
+      for (var k = 0; k < units.length; k++) {
+        if (units[k].el !== u.el && units[k].el.contains(u.el)) return false;
       }
       return true;
     });
@@ -103,11 +133,20 @@
 
     for (var i = 0; i < blocks.length; i++) {
       try {
-        gsap.fromTo(blocks[i],
+        // Siblings in a row share a top edge, so without this they would all land at
+        // once. Each item starts a touch lower down the viewport than the one before,
+        // which gives the row its sweep. Capped so a long list does not trail off.
+        var beat = Math.min(blocks[i].nth, 4) * STAGGER;
+        gsap.fromTo(blocks[i].el,
           { y: RISE, opacity: 0 },
           {
             y: 0, opacity: 1, ease: 'none',
-            scrollTrigger: { trigger: blocks[i], start: START, end: END, scrub: SCRUB }
+            scrollTrigger: {
+              trigger: blocks[i].el,
+              start: 'top ' + (START - beat) + '%',
+              end: 'top ' + (END - beat) + '%',
+              scrub: SCRUB
+            }
           });
       } catch (err) {
         console.debug('[reveal] skipped a block', err);
