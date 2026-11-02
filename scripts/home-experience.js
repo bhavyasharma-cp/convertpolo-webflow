@@ -225,6 +225,24 @@
     });
   }
 
+  // Figma puts the logo on the intro frames but the Nav only on the hero frame
+  // (230:5852 inside 117:3974), so Menu / Get Website Audit wait for the hero rather
+  // than sitting over the EXPERIENCE screen. The embed hides them while <html> carries
+  // .cp-nav-wait and does nothing otherwise, so a script that never runs leaves the nav
+  // visible — the safe way round.
+  function navGate(root) {
+    var html = document.documentElement;
+    function sync() {
+      // Below 768 there is no EXPERIENCE screen, so the hero is the first thing you see.
+      if (window.innerWidth < 768) return html.classList.remove('cp-nav-wait');
+      var screen = root.offsetHeight || window.innerHeight;
+      html.classList.toggle('cp-nav-wait', window.scrollY < screen * 0.45);
+    }
+    sync();
+    window.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+  }
+
   function rest(root) {
     // The still state Figma ends on, for reduced motion and for a failed build.
     var words = root.querySelector('[data-cp="exp-words"]');
@@ -253,6 +271,7 @@
   }
 
   function init(root) {
+    navGate(root);                 // runs whatever the motion preference is
     if (reduced()) return rest(root);
 
     var running = null;
