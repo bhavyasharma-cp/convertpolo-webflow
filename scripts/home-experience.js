@@ -257,13 +257,17 @@
 
     var running = null;
     var handed = false;
-    function start() {
+    // Every position is derived from the measured width, so a resize has to rebuild.
+    // Once the screen has played, though, rebuilding must not replay it — it jumps
+    // straight to the end instead, and only the word rotator keeps running.
+    function start(settled) {
       if (running) {
         if (running.master) running.master.kill();
         if (running.loop) running.loop.kill();
       }
       running = build(root);
       if (!running) return rest(root);
+      if (settled) running.master.progress(1);
       if (!handed) {
         handed = true;          // a resize rebuilds the panels, not the hand-off
         handOff();
@@ -288,7 +292,8 @@
     window.addEventListener('resize', function () {
       clearTimeout(resize);
       resize = setTimeout(function () {
-        if (running) start();
+        if (!running) return;
+        start(running.master.progress() >= 1);
       }, 250);
     });
   }
