@@ -206,8 +206,19 @@
       if (off || window.scrollY > SETTLED) return;
       var top = hero.getBoundingClientRect().top + window.scrollY;
       if (top <= SETTLED) return;
-      var at = { y: window.scrollY };
       gliding = true;
+
+      // With smooth scrolling on, Lenis owns the scroll position — driving window.scrollTo
+      // per frame would just fight its lerp. Hand it the destination instead.
+      if (window.cpLenis) {
+        window.cpLenis.scrollTo(top, {
+          duration: GLIDE,
+          onComplete: function () { gliding = false; }
+        });
+        return;
+      }
+
+      var at = { y: window.scrollY };
       var glide = gsap.to(at, {
         y: top,
         duration: GLIDE,
