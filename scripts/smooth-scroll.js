@@ -28,7 +28,16 @@
 (function () {
   'use strict';
 
-  var DURATION = 1.2;      // seconds of tail; the reference settles in roughly 1.5
+  // Matched to the reference rather than taken from Lenis's defaults. Its wheel response
+  // is a slow exponential lerp, not a fixed-duration ramp: one tick moves ~10px on the
+  // first frame and barely decays (10, 9, 10, 8, 9, 9, 8…), settling after ~1.5s. That
+  // works out at a per-frame factor near 0.032. Lenis's own default felt right in kind
+  // but four times too eager — 42px on the first frame against their 10.
+  //
+  // These two numbers are the whole feel. LERP is the weight (lower = heavier, longer
+  // glide); WHEEL is how far one notch of the wheel asks to travel.
+  var LERP = 0.035;
+  var WHEEL = 0.8;         // the reference covers ~317px for a 400px wheel delta
 
   function reduced() {
     try {
@@ -52,7 +61,8 @@
     if (window.cpLenis) return;
 
     var lenis = new Lenis({
-      duration: DURATION,
+      lerp: LERP,
+      wheelMultiplier: WHEEL,
       smoothWheel: true,
       // Phones keep their native momentum; see the note above.
       syncTouch: false
