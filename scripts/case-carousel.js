@@ -7,15 +7,22 @@
  * with the wheel (x -257 at scrollY 4000, -1257 at 5000) under `scrub: 1`. The scrub is
  * what makes it feel weighted rather than glued to the scrollbar. Same thing here.
  *
- * The markup already wanted this: five `.cro-case` cards sit in a flex row that is wider
- * than the container (2180px against 1440), bleeding 400px off each side, and there is a
- * ready-made `[data-cp="case-dots"]` strip with one dot per card and an `.is-active`
- * class that nothing was setting. So this only has to move the row and light the dots.
+ * The markup already wanted this: the `.cro-case` cards sit in a flex row that is wider
+ * than the container, bleeding off each side, and there is a ready-made
+ * `[data-cp="case-dots"]` strip with an `.is-active` class that nothing was setting. So
+ * this only has to move the row and light the dots.
+ *
+ * The row is a Collection List: the CRO and LPO pages draw from Case Studies filtered by
+ * the Service field, the Brand page from Brand Case Studies. So the number of cards is
+ * whatever the CMS holds, which is why the dot strip is trimmed or extended to match and
+ * why a service with nothing tagged to it yet hides its section rather than showing an
+ * empty strip under a heading.
  *
  * Markup (Webflow):
- *   section
- *     .cro-cases_list            the row; found as the cards' own parent
- *       [data-cp="case"] * 5     the cards
+ *   section[data-cp="cases"]
+ *     .cro-cases_list            the row; the Collection List itself
+ *       .w-dyn-item              what actually travels
+ *         [data-cp="case"]       the card
  *     [data-cp="case-dots"] > i  one per card, `.is-active` marks the current one
  *
  * Below 768 the row is already a native scroll-snap strip, which is the better phone
@@ -47,11 +54,11 @@
     return isNaN(value) || !value ? FALLBACK_PAD : value;
   }
 
-  function build(section, row, cards, dots) {
+  function build(section, row, units, dots) {
     // Measure at rest, in viewport coordinates.
     gsap.set(row, { x: 0 });
-    var first = cards[0].getBoundingClientRect();
-    var last = cards[cards.length - 1].getBoundingClientRect();
+    var first = units[0].getBoundingClientRect();
+    var last = units[units.length - 1].getBoundingClientRect();
     var gutter = pad(section);
 
     var from = gutter - first.left;                            // first card to the left edge
@@ -84,12 +91,28 @@
     return tl;
   }
 
+  // The dots strip is written by hand with a fixed number of dots; the row is a CMS list
+  // whose length changes as case studies are added. Match one to the other.
+  function tune(strip, count) {
+    if (!strip) return [];
+    var dots = strip.children;
+    while (dots.length > count) strip.removeChild(strip.lastChild);
+    while (dots.length && dots.length < count) {
+      strip.appendChild(dots[0].cloneNode(false));
+    }
+    return Array.prototype.slice.call(strip.children);
+  }
+
   function init(section) {
     var cards = Array.prototype.slice.call(section.querySelectorAll('[data-cp="case"]'));
-    if (cards.length < 2) return;
-    var row = cards[0].parentNode;
-    var strip = section.querySelector('[data-cp="case-dots"]');
-    var dots = strip ? Array.prototype.slice.call(strip.querySelectorAll('i')) : [];
+    // A Collection List wraps every card in a .w-dyn-item, so the thing that travels is
+    // the item, not the card, and the row is the list rather than the card's own parent.
+    var units = cards.map(function (card) {
+      return card.closest('.w-dyn-item') || card;
+    });
+    if (units.length < 2) return;
+    var row = units[0].parentNode;
+    var dots = tune(section.querySelector('[data-cp="case-dots"]'), units.length);
 
     var mq = window.matchMedia(DESKTOP);
     var tween = null;
@@ -102,7 +125,7 @@
       }
       gsap.set(row, { clearProps: 'transform' });
       if (!mq.matches || reduced()) return;     // phones keep their native snap strip
-      tween = build(section, row, cards, dots);
+      tween = build(section, row, units, dots);
     }
 
     apply();
@@ -119,15 +142,16 @@
   function boot() {
     if (!window.gsap || !window.ScrollTrigger) return;
     gsap.registerPlugin(ScrollTrigger);
-    // Find the section through the cards' own marker rather than a layout class.
-    var cards = document.querySelectorAll('[data-cp="case"]');
-    var done = [];
-    for (var i = 0; i < cards.length; i++) {
-      var section = cards[i].closest('section');
-      if (!section || done.indexOf(section) > -1) continue;
-      done.push(section);
+    var sections = document.querySelectorAll('[data-cp="cases"]');
+    for (var i = 0; i < sections.length; i++) {
       try {
-        init(section);
+        // The row is a Collection List now, so a service with no case studies tagged to
+        // it yet would leave a heading over an empty strip. Hide the section instead.
+        if (!sections[i].querySelector('[data-cp="case"]')) {
+          sections[i].style.display = 'none';
+          continue;
+        }
+        init(sections[i]);
       } catch (err) {
         console.debug('[cases] init failed', err);
       }
