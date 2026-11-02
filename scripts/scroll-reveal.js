@@ -45,7 +45,8 @@
     '[data-cp="infinity"]', '[data-cp="circle"]', '[data-cp="wave"]',
     '[data-cp="story-team"]', '[data-cp="cards"]', '[data-cp="jobs-cards"]',
     '[data-cp="bbs-tabs"]', '[data-cp="bbs-slides"]', '[data-cp="compare"]',
-    '[data-cp="logos"]', '[data-cp="testimonials"]', '[data-cp="metric-shaped"]',
+    '[data-cp="logos"]', '[data-cp="testimonials"]',
+    '[data-cp="metrics"]', '[data-cp="metric-shaped"]',
     '[data-cp="menu"]', '[data-cp="menu-panel"]', '[data-cp="blog-filter"]',
     '[data-cp-reveal="off"]',
     '.section_cro-cases',          // case-carousel.js drives this one
