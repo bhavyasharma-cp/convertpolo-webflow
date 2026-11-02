@@ -41,31 +41,35 @@
     ['[data-cp="exp-cards"]', -868, 72]
   ];
 
-  // Component 16, per row: [word width, bar x/width per variant, word x per variant].
+  // Component 16, per row: bar [x, width] and word x at each variant, in panel units.
   // Bars are one full-width div scaled from its left edge, so a Figma width becomes
   // a scaleX and a Figma x becomes a translate.
+  //
+  // Figma has a fourth variant that clears the words out again and slides two hairlines
+  // in — but that is the screen leaving for the hero (1:11076 -> 1:8790 after a 4s hold),
+  // not a resting state. On a page the visitor scrolls themselves, so this stops at
+  // variant 3, the full picture. See the note by STOP_AT below.
   var ROWS = [
-    { bar: [[-230, 156], [0, 526], [0, 833], [0, 833]], word: [-352, -172, 248, -352], fade: [1, 1, 1, 1] },
-    { bar: [[-230, 100], [0, 409], [0, 833], [0, 833]], word: [-352, -172, 297, 297], fade: [1, 1, 1, 0] },
-    { bar: [[-230, 230], [0, 702], [0, 833], [0, 833]], word: [-352, -122, 244, 834], fade: [1, 1, 1, 1] }
+    { bar: [[-230, 156], [0, 526], [0, 833]], word: [-352, -172, 248], fade: [1, 1, 1] },
+    { bar: [[-230, 100], [0, 409], [0, 833]], word: [-352, -172, 297], fade: [1, 1, 1] },
+    { bar: [[-230, 230], [0, 702], [0, 833]], word: [-352, -122, 244], fade: [1, 1, 1] }
   ];
-  var RULES = [1013, 0];     // the two hairlines slide in from the right on the last hop
 
-  // Component 18, per card: Figma [x, y, width] at each of the four variants.
+  // Component 18, per card: Figma [x, y, width] at each variant, in panel units.
   // Cards are rendered at their variant-3 width (345) and scaled for the rest.
+  // Variant 4 flies them off again; see the ROWS note — it is the exit, not a rest.
   var CARD_W = 345;
   var CARDS = [
-    { sel: '.is-1', at: [[222, -93, 390], [222, 152, 390], [36, 188, 345], [-254, 308, 345]] },
-    { sel: '.is-2', at: [[252, -189, 330], [252, 122, 330], [452, 32, 345], [792, -78, 345]] },
-    { sel: '.is-3', at: [[283, -184, 270], [283, 92, 270], [45, 54, 345], [-165, -76, 345]] },
-    { sel: '.is-4', at: [[315, -262, 210], [315, 67, 210], [443, 169, 345], [775, 306, 345]] }
+    { sel: '.is-1', at: [[222, -93, 390], [222, 152, 390], [36, 188, 345]] },
+    { sel: '.is-2', at: [[252, -189, 330], [252, 122, 330], [452, 32, 345]] },
+    { sel: '.is-3', at: [[283, -184, 270], [283, 92, 270], [45, 54, 345]] },
+    { sel: '.is-4', at: [[315, -262, 210], [315, 67, 210], [443, 169, 345]] }
   ];
-  // The rings, as a scale of the widest one (140) and its opacity, at variants 3 and 4.
+  // The rings, as a scale of the widest one (140) and its opacity, at variant 3.
   var RINGS = [
-    { sel: '.is-1', v3: [40 / 140, 1], v4: [13 / 140, 1] },
-    { sel: '.is-2', v3: [90 / 140, 0.4], v4: [29 / 140, 0.4] },
-    { sel: '.is-3', v3: [140 / 140, 0.15], v4: [45 / 140, 0.15] },
-    { sel: '.is-4', v3: [0.001, 0], v4: [61 / 140, 0.15] }
+    { sel: '.is-1', to: [40 / 140, 1] },
+    { sel: '.is-2', to: [90 / 140, 0.4] },
+    { sel: '.is-3', to: [140 / 140, 0.15] }
   ];
 
   function reduced() {
@@ -99,11 +103,11 @@
     }
 
     // ---- Component 16: the word rows ---------------------------------------
+    // Figma holds variant 1 for 0.1s, then two 1.2s LINEAR hops. The hold runs while the
+    // panel is still sliding in, exactly as the prototype plays it.
     if (words && p) {
       var bg = words.querySelector('.experience_words-bg');
       var rows = words.querySelectorAll('.experience_words-row');
-      var rules = words.querySelectorAll('.experience_words-rule');
-      var t = master.add(gsap.timeline(), 0.1);        // Figma holds the first frame 0.1s
 
       for (var r = 0; r < ROWS.length && r < rows.length; r++) {
         var spec = ROWS[r];
@@ -111,46 +115,40 @@
         var word = rows[r].querySelector('.experience_words-word');
         gsap.set(bar, { x: spec.bar[0][0] * p, scaleX: spec.bar[0][1] / PANEL });
         gsap.set(word, { x: spec.word[0] * p, opacity: spec.fade[0] });
-        // three hops: 0 -> 1.2, 1.2 -> 2.4, then a 0.3s hold before the last 1.2
-        for (var v = 1; v <= 3; v++) {
-          var at = v < 3 ? (v - 1) * 1.2 : 2.7;
-          t.to(bar, { x: spec.bar[v][0] * p, scaleX: spec.bar[v][1] / PANEL, duration: 1.2, ease: LINEAR }, at);
-          t.to(word, { x: spec.word[v] * p, opacity: spec.fade[v], duration: 1.2, ease: LINEAR }, at);
+        for (var v = 1; v < ROWS[r].bar.length; v++) {
+          var at = 0.1 + (v - 1) * 1.2;
+          master.to(bar, { x: spec.bar[v][0] * p, scaleX: spec.bar[v][1] / PANEL, duration: 1.2, ease: LINEAR }, at);
+          master.to(word, { x: spec.word[v] * p, opacity: spec.fade[v], duration: 1.2, ease: LINEAR }, at);
         }
       }
       // the panel turns from cream to white on the second hop
-      if (bg) t.to(bg, { opacity: 1, duration: 1.2, ease: LINEAR }, 1.2);
-      for (var q = 0; q < rules.length; q++) {
-        gsap.set(rules[q], { x: RULES[0] * p });
-        t.to(rules[q], { x: RULES[1] * p, duration: 1.2, ease: LINEAR }, 2.7);
-      }
+      if (bg) master.to(bg, { opacity: 1, duration: 1.2, ease: LINEAR }, 1.3);
     }
 
     // ---- Component 18: the testimonial cards -------------------------------
+    // Figma: 0.3s hold, 2.555s GENTLE as they fall into a stack, then 1.533s GENTLE as
+    // they spread and the rings open behind them.
     if (cards && p) {
-      var c = master.add(gsap.timeline(), 0.3);
       var k;
       for (k = 0; k < CARDS.length; k++) {
         var card = cards.querySelector('.experience_card' + CARDS[k].sel);
         if (!card) continue;
         var a = CARDS[k].at;
         gsap.set(card, { x: a[0][0] * p, y: a[0][1] * p, scale: a[0][2] / CARD_W });
-        c.to(card, { x: a[1][0] * p, y: a[1][1] * p, scale: a[1][2] / CARD_W, duration: 2.555, ease: GENTLE }, 0);
-        c.to(card, { x: a[2][0] * p, y: a[2][1] * p, scale: a[2][2] / CARD_W, duration: 1.533, ease: GENTLE }, 2.556);
-        c.to(card, { x: a[3][0] * p, y: a[3][1] * p, scale: a[3][2] / CARD_W, duration: 0.3, ease: OUT }, 4.189);
+        master.to(card, { x: a[1][0] * p, y: a[1][1] * p, scale: a[1][2] / CARD_W, duration: 2.555, ease: GENTLE }, 0.3);
+        master.to(card, { x: a[2][0] * p, y: a[2][1] * p, scale: a[2][2] / CARD_W, duration: 1.533, ease: GENTLE }, 2.856);
       }
       for (k = 0; k < RINGS.length; k++) {
         var ring = cards.querySelector('.experience_pulse' + RINGS[k].sel);
         if (!ring) continue;
-        gsap.set(ring, { xPercent: -50, yPercent: -50, scale: RINGS[k].v3[0], opacity: 0 });
-        c.to(ring, { scale: RINGS[k].v3[0], opacity: RINGS[k].v3[1], duration: 1.533, ease: GENTLE }, 2.556);
-        c.to(ring, { scale: RINGS[k].v4[0], opacity: RINGS[k].v4[1], duration: 0.3, ease: OUT }, 4.189);
+        gsap.set(ring, { xPercent: -50, yPercent: -50, scale: RINGS[k].to[0] * 0.4, opacity: 0 });
+        master.to(ring, { scale: RINGS[k].to[0], opacity: RINGS[k].to[1], duration: 1.533, ease: GENTLE }, 2.856);
       }
       // the line-art drifts and turns a little across the whole run
       var waveA = cards.querySelector('.experience_wave.is-cards-a');
       var waveB = cards.querySelector('.experience_wave.is-cards-b');
-      if (waveA) c.to(waveA, { x: -62 * p, y: -17 * p, rotation: 6, duration: 4.489, ease: GENTLE }, 0);
-      if (waveB) c.to(waveB, { x: -54 * p, y: -89 * p, scale: 0.884, duration: 4.489, ease: GENTLE }, 0);
+      if (waveA) master.to(waveA, { x: -62 * p, y: -17 * p, rotation: 6, duration: 4.389, ease: GENTLE }, 0.3);
+      if (waveB) master.to(waveB, { x: -54 * p, y: -89 * p, scale: 0.884, duration: 4.389, ease: GENTLE }, 0.3);
     }
 
     // ---- Frame 55: the word rotator ----------------------------------------
@@ -190,7 +188,6 @@
         x: ROWS[r].word[2] * p, opacity: ROWS[r].fade[2]
       });
     }
-    gsap.set(words.querySelectorAll('.experience_words-rule'), { x: 0 });
     if (!cards) return;
     for (var k = 0; k < CARDS.length; k++) {
       var card = cards.querySelector('.experience_card' + CARDS[k].sel);
@@ -199,7 +196,7 @@
     }
     for (var n = 0; n < RINGS.length; n++) {
       var ring = cards.querySelector('.experience_pulse' + RINGS[n].sel);
-      if (ring) gsap.set(ring, { xPercent: -50, yPercent: -50, scale: RINGS[n].v3[0], opacity: RINGS[n].v3[1] });
+      if (ring) gsap.set(ring, { xPercent: -50, yPercent: -50, scale: RINGS[n].to[0], opacity: RINGS[n].to[1] });
     }
   }
 
