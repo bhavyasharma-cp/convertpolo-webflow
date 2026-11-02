@@ -11,6 +11,11 @@
  * -868, Frame 61 from 1445. It runs on the intro loader's `cp:intro-done` cue, or
  * straight away when the intro is not playing (a repeat visit in the same session).
  *
+ * Figma then holds the screen 4s and glides to the hero in 0.8s (1:11076 -> 1:8790).
+ * handOff() does the same, but only while the visitor has done nothing at all — the
+ * first wheel, touch, key or scroll of their own cancels it permanently, and a wheel
+ * mid-glide stops it dead. Nobody gets scrolled somewhere they were already leaving.
+ *
  * Every Figma coordinate below is in that panel's own units — 833 wide for the two wide
  * panels, 1440 for the board — and is converted at run time against the measured width,
  * so the whole thing survives the board scaling with the viewport. A resize rebuilds the
@@ -32,6 +37,11 @@
   var LINEAR = 'none';
   var GENTLE = 'power2.inOut';   // Figma's "Gentle" spring, near enough
   var OUT = 'power2.out';
+
+  var ENTRANCE = 1.2;        // the panels' slide-in, after which Figma starts its hold
+  var HOLD = 4;              // 1:11076 holds 4s ...
+  var GLIDE = 0.8;           // ... then Smart Animate 0.8s to the hero (1:8790)
+  var SETTLED = 4;           // px of scroll that counts as the visitor taking over
 
   // Entrance: where each panel starts, in board units, against where it rests.
   var ENTRY = [
@@ -173,6 +183,48 @@
     return { master: master, loop: loop };
   }
 
+  // Figma holds 1:11076 for 4s and then glides to the hero in 0.8s. A page cannot take
+  // that liberty blindly, so this only fires while the visitor has done nothing: the
+  // first wheel, touch, key or scroll of their own calls it off for good, and it never
+  // runs twice or when the page is already scrolled.
+  function handOff() {
+    var hero = document.querySelector('[data-cp="home-hero"]');
+    if (!hero) return;
+
+    var off = false;
+    var gliding = false;       // our own scrolling must not read as theirs
+    function cancel() { off = true; }
+    var signals = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+    for (var i = 0; i < signals.length; i++) {
+      window.addEventListener(signals[i], cancel, { passive: true });
+    }
+    window.addEventListener('scroll', function () {
+      if (!gliding && window.scrollY > SETTLED) cancel();
+    }, { passive: true });
+
+    gsap.delayedCall(ENTRANCE + HOLD, function () {
+      if (off || window.scrollY > SETTLED) return;
+      var top = hero.getBoundingClientRect().top + window.scrollY;
+      if (top <= SETTLED) return;
+      var at = { y: window.scrollY };
+      gliding = true;
+      var glide = gsap.to(at, {
+        y: top,
+        duration: GLIDE,
+        ease: OUT,
+        onUpdate: function () {
+          if (off) {                        // they grabbed the wheel mid-glide
+            glide.kill();
+            gliding = false;
+            return;
+          }
+          window.scrollTo(0, at.y);
+        },
+        onComplete: function () { gliding = false; }
+      });
+    });
+  }
+
   function rest(root) {
     // The still state Figma ends on, for reduced motion and for a failed build.
     var words = root.querySelector('[data-cp="exp-words"]');
@@ -204,13 +256,18 @@
     if (reduced()) return rest(root);
 
     var running = null;
+    var handed = false;
     function start() {
       if (running) {
         if (running.master) running.master.kill();
         if (running.loop) running.loop.kill();
       }
       running = build(root);
-      if (!running) rest(root);
+      if (!running) return rest(root);
+      if (!handed) {
+        handed = true;          // a resize rebuilds the panels, not the hand-off
+        handOff();
+      }
     }
 
     // Wait for the intro loader's cue when it is playing, otherwise go now.
