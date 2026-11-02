@@ -105,7 +105,8 @@
 
   function init(section) {
     var cards = Array.prototype.slice.call(section.querySelectorAll('[data-cp="case"]'));
-    if (cards.length < 2) return;
+    var dots = tune(section.querySelector('[data-cp="case-dots"]'), cards.length);
+    if (cards.length < 2) return;      // a single card needs no travel, but still one dot
 
     // A Collection List wraps every card in a .w-dyn-item. The section's embed gives that
     // wrapper `display: contents` so the card itself stays the flex child the layout
@@ -113,8 +114,6 @@
     // we measure and the row is the list one step above the wrapper.
     var row = cards[0].parentNode;
     if (row.classList.contains('w-dyn-item')) row = row.parentNode;
-
-    var dots = tune(section.querySelector('[data-cp="case-dots"]'), cards.length);
 
     var mq = window.matchMedia(DESKTOP);
     var tween = null;
