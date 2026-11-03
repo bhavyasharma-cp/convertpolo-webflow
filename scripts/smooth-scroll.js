@@ -83,6 +83,25 @@
     gsap.ticker.add(function (time) { lenis.raf(time * 1000); });
     gsap.ticker.lagSmoothing(0);
 
+    // Lenis measures the page once and scrolls against that measurement, so anything that makes the
+    // page taller after load — "Load more" on the blog, a "Read more" that unfolds a testimonial, a
+    // filter, an accordion — leaves it scrolling to the old bottom and stopping there, with the rest
+    // of the page below and the wheel apparently dead. Watch the document's height instead and
+    // re-measure, once per frame at most.
+    try {
+      var pending = false;
+      var remeasure = function () {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(function () { pending = false; lenis.resize(); });
+      };
+      var size = new ResizeObserver(remeasure);
+      size.observe(document.documentElement);
+      size.observe(document.body);
+    } catch (err) {
+      console.debug('[smooth] height observer', err);
+    }
+
     // Hand the page back whenever something locks it, and take it again afterwards.
     var stopped = false;
     function sync() {
