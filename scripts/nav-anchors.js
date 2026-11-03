@@ -117,7 +117,13 @@
     }
     if (!target) return;
 
+    // Webflow's own script animates in-page anchors, and preventDefault alone does
+    // not stop a listener that has already been registered from running. This one
+    // listens in the capture phase and takes the click out of circulation, so the
+    // page is scrolled once, by us.
     event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
 
     var menu = link.closest('[data-cp="menu"]');
     if (!menu) return go(target);
@@ -129,7 +135,7 @@
 
   function init() {
     try {
-      document.addEventListener('click', onClick);
+      document.addEventListener('click', onClick, true);
     } catch (err) {
       console.debug('nav-anchors:', err);
     }
