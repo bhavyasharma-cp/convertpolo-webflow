@@ -42,15 +42,39 @@
     return -(height + GAP);
   }
 
-  function go(target) {
+  // These pages pin sections as you scroll (the infinity sequence, the case study
+  // carousel), and a pin adds its spacer to the document only once it is reached.
+  // So the footer is further down when we arrive than it was when we set off, and
+  // one scroll lands short by however much grew on the way. Re-measuring after the
+  // scroll settles and going again converges in a pass or two; CLOSE is the slack
+  // where another pass would only jitter.
+  var CLOSE = 4;
+  var PASSES = 4;
+
+  function go(target, pass) {
+    pass = pass || 1;
+    var want = -offset();                       // where the target should end up
     var lenis = window.cpLenis;
+
+    function again() {
+      if (pass >= PASSES) return;
+      if (Math.abs(target.getBoundingClientRect().top - want) <= CLOSE) return;
+      go(target, pass + 1);
+    }
+
     if (lenis && lenis.scrollTo) {
-      lenis.scrollTo(target, { offset: offset(), immediate: reduced() });
+      lenis.scrollTo(target, {
+        offset: offset(),
+        immediate: reduced(),
+        onComplete: again
+      });
       return;
     }
+
     // No Lenis on this page: fall back to the browser's own smooth scroll.
     var top = target.getBoundingClientRect().top + window.pageYOffset + offset();
     window.scrollTo({ top: top, behavior: reduced() ? 'auto' : 'smooth' });
+    setTimeout(again, reduced() ? 0 : 700);
   }
 
   // Lenis is stopped for as long as the menu holds the page, so its own state is
