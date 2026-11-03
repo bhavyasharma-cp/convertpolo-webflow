@@ -48,10 +48,15 @@
   // one scroll lands short by however much grew on the way. Re-measuring after the
   // scroll settles and going again converges in a pass or two; CLOSE is the slack
   // where another pass would only jitter.
+  // A pin eats scroll without moving anything, so a pass that travels the pin's whole
+  // length leaves the target exactly where it was — the passes have to outnumber the
+  // pins between here and the target, not just correct a rounding error. They stop
+  // early the moment the page stops moving, so a target that simply cannot be reached
+  // (the footer at the very bottom, say) costs one wasted pass and no more.
   var CLOSE = 4;
-  var PASSES = 4;
+  var PASSES = 8;
 
-  function go(target, pass) {
+  function go(target, pass, from) {
     pass = pass || 1;
     var want = -offset();                       // where the target should end up
     var lenis = window.cpLenis;
@@ -59,7 +64,9 @@
     function again() {
       if (pass >= PASSES) return;
       if (Math.abs(target.getBoundingClientRect().top - want) <= CLOSE) return;
-      go(target, pass + 1);
+      var at = window.pageYOffset;
+      if (from != null && Math.abs(at - from) <= CLOSE) return;   // nothing moved
+      go(target, pass + 1, at);
     }
 
     if (lenis && lenis.scrollTo) {
