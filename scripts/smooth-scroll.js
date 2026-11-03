@@ -103,17 +103,12 @@
     // can see change in time, so check again on a slow interval as a backstop.
     setInterval(sync, 500);
 
-    // In-page anchors have to go through Lenis or they fight it.
-    document.addEventListener('click', function (e) {
-      var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
-      if (!a) return;
-      var id = a.getAttribute('href');
-      if (!id || id === '#' || a.getAttribute('data-cp')) return;   // '#' buttons are triggers
-      var to = document.querySelector(id);
-      if (!to) return;
-      e.preventDefault();
-      lenis.scrollTo(to);
-    });
+    // In-page anchors used to be handled here, with a plain lenis.scrollTo(target).
+    // They are nav-anchors.js's job now: the targets are in the footer, behind the
+    // pinned sequences, and getting there needs the header's height, the menu
+    // closed first and a search for where the target actually ends up. Two
+    // listeners both answering the same click meant the eased one won, whichever
+    // was right.
   }
 
   function ready() {
