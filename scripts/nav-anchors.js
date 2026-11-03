@@ -20,7 +20,8 @@
  *      and the scroll waits until Lenis is running again.
  *
  * Links to another page are left completely alone; so is a bare `href="#"`, which
- * means "not wired up yet" rather than "top of page".
+ * means "not wired up yet" rather than "top of page". There is no
+ * prefers-reduced-motion branch because the scroll is already instant — see go().
  */
 (function () {
   'use strict';
@@ -28,60 +29,56 @@
   var GAP = 24;        // breathing room between the header and the target
   var WAIT = 1200;     // ms to wait for the menu to finish closing
 
-  function reduced() {
-    try {
-      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
   function offset() {
     var header = document.querySelector('[data-cp="header"], .header_component');
     var height = header ? header.getBoundingClientRect().height : 0;
     return -(height + GAP);
   }
 
-  // These pages pin sections as you scroll (the infinity sequence, the case study
-  // carousel), and a pin adds its spacer to the document only once it is reached.
-  // So the footer is further down when we arrive than it was when we set off, and
-  // one scroll lands short by however much grew on the way. Re-measuring after the
-  // scroll settles and going again converges in a pass or two; CLOSE is the slack
-  // where another pass would only jitter.
-  // A pin eats scroll without moving anything, so a pass that travels the pin's whole
-  // length leaves the target exactly where it was — the passes have to outnumber the
-  // pins between here and the target, not just correct a rounding error. They stop
-  // early the moment the page stops moving, so a target that simply cannot be reached
-  // (the footer at the very bottom, say) costs one wasted pass and no more.
+  // Pinned sections make an anchor's destination unknowable from where you start.
+  // The footer on a service page is a clear case: at the top of the CRO page it
+  // measures 4340px away, but ~6000px of that page is pinned storytelling, which
+  // holds the footer still while the scroll runs through it — so by the time you
+  // have travelled 4340px the footer is 4340px further on again. Each step gets
+  // closer, so re-measuring and stepping again converges; what it converges on is
+  // the bottom of the page, which for the footer is exactly right.
+  //
+  // The steps are instant rather than eased. An eased scroll here would take a
+  // second or more and rip through every pinned sequence on the way, and the
+  // stepping would be visible as a stutter; a nav link that simply arrives reads
+  // as navigation, which is what it is.
   var CLOSE = 4;
-  var PASSES = 8;
+  var STEPS = 12;
 
-  function go(target, pass, from) {
-    pass = pass || 1;
+  function go(target) {
     var want = -offset();                       // where the target should end up
     var lenis = window.cpLenis;
+    var step = 0;
+    var last = null;
 
-    function again() {
-      if (pass >= PASSES) return;
-      if (Math.abs(target.getBoundingClientRect().top - want) <= CLOSE) return;
+    function bottom() {
+      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    }
+
+    function jump(y) {
+      if (lenis && lenis.scrollTo) lenis.scrollTo(y, { immediate: true });
+      else window.scrollTo(0, y);
+    }
+
+    function hop() {
       var at = window.pageYOffset;
-      if (from != null && Math.abs(at - from) <= CLOSE) return;   // nothing moved
-      go(target, pass + 1, at);
+      var off = target.getBoundingClientRect().top - want;
+      if (Math.abs(off) <= CLOSE) return;       // arrived
+      if (++step > STEPS) return;
+
+      var next = Math.max(0, Math.min(at + off, bottom()));
+      if (next === last || Math.abs(next - at) <= CLOSE) return;   // nowhere left to go
+      last = next;
+      jump(next);
+      window.requestAnimationFrame(hop);
     }
 
-    if (lenis && lenis.scrollTo) {
-      lenis.scrollTo(target, {
-        offset: offset(),
-        immediate: reduced(),
-        onComplete: again
-      });
-      return;
-    }
-
-    // No Lenis on this page: fall back to the browser's own smooth scroll.
-    var top = target.getBoundingClientRect().top + window.pageYOffset + offset();
-    window.scrollTo({ top: top, behavior: reduced() ? 'auto' : 'smooth' });
-    setTimeout(again, reduced() ? 0 : 700);
+    hop();
   }
 
   // Lenis is stopped for as long as the menu holds the page, so its own state is
