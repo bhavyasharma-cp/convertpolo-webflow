@@ -97,6 +97,7 @@
     }
   };
   var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
+  var TAIL_GAP = 24;             // breathing room kept under the footer's last line (see trimTail)
   var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
   var PULSE = { ratio: 53 / 65, duration: 0.8, ease: 'power1.out' };
 
@@ -344,7 +345,7 @@
     var steps = !next ? 0 : after ? 2 : 1;
     var stepPx = function () { return window.innerHeight * o.scrollPerStep; };
     var infinityPx = function () { return window.innerHeight * SCROLL_PER_UNIT * units; };
-    var stage = c.stage, tailStep = 0, level = [];
+    var stage = c.stage, tailStep = 0, level = [], tailPad = null;
     var stageOut = 0, nextIn = 0, nextOut = 0;
 
     if (next) {
@@ -368,6 +369,32 @@
       }
     }
 
+    // The last step of the sequence rests at the end of the pin — but the page does not end there.
+    // The footer carries ~215px of empty bottom padding, so there is a further scroll past the pin,
+    // and taking it unpins the section and slides the whole composition off the top: the visitor
+    // lands on a form cut in half above blank space. That padding is trimmed here so the page ends
+    // with the pin, keeping only the scroll needed to bring the footer's own last line into view
+    // (TAIL_GAP under it) on screens too short for the whole frame.
+    // Re-run on every refresh (load, resize, a late image), since all of it moves with them.
+    function trimTail(end) {
+      var tail = after || next;
+      if (!tail) return;
+      gsap.set(level, { y: 0 });                       // measure the page as it stands at the pin's end
+      if (tailPad === null) tailPad = parseFloat(getComputedStyle(tail).paddingBottom) || 0;
+      gsap.set(tail, { paddingBottom: tailPad });      // back to the footer's own padding, then measure
+      var content = -Infinity;
+      all(tail, '*').forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) content = Math.max(content, r.bottom);
+      });
+      if (content === -Infinity) content = tail.getBoundingClientRect().bottom;
+      content += window.pageYOffset;
+      var want = Math.max(end + window.innerHeight, Math.round(content) + TAIL_GAP);
+      var over = Math.round(document.documentElement.scrollHeight - want);
+      // Only the padding can give: a negative bottom margin does not shrink the page wrapper.
+      if (over > 0) gsap.set(tail, { paddingBottom: Math.max(0, tailPad - over) });
+    }
+
     function goToTail(s) {
       if (s === tailStep) return;
       var dur = (s === 2 && tailStep === 1) || (s === 1 && tailStep === 2) ? o.exit.duration : o.duration;
@@ -386,7 +413,7 @@
       pin: true,
       invalidateOnRefresh: true,
       onToggle: engage,
-      onRefresh: function (self) { update(self, true); },
+      onRefresh: function (self) { trimTail(self.end); update(self, true); },
       onUpdate: function (self) { update(self, false); }
     });
 
