@@ -35,50 +35,56 @@
     return -(height + GAP);
   }
 
-  // Pinned sections make an anchor's destination unknowable from where you start.
-  // The footer on a service page is a clear case: at the top of the CRO page it
+  // Pinned sections make an anchor's destination unknowable from where you stand.
+  // The footer on a service page is the clear case: from the top of the CRO page it
   // measures 4340px away, but ~6000px of that page is pinned storytelling, which
-  // holds the footer still while the scroll runs through it — so by the time you
-  // have travelled 4340px the footer is 4340px further on again. Each step gets
-  // closer, so re-measuring and stepping again converges; what it converges on is
-  // the bottom of the page, which for the footer is exactly right.
+  // holds the footer still while the scroll runs through it. Travel 4340px and the
+  // footer is 4340px further on again. Nor can you measure it from the bottom and
+  // scroll back: coming back re-enters the pin, and the footer moves again.
   //
-  // The steps are instant rather than eased. An eased scroll here would take a
-  // second or more and rip through every pinned sequence on the way, and the
-  // stepping would be visible as a stutter; a nav link that simply arrives reads
-  // as navigation, which is what it is.
-  var CLOSE = 4;
-  var STEPS = 12;
+  // What is true is that the target's distance down the viewport only ever shrinks
+  // as you scroll down. So there is one scroll position where it sits where we want
+  // it, and a halving search finds it in a dozen probes.
+  //
+  // Those probes run inside a single frame, scrolling the window and asking
+  // ScrollTrigger to settle the pins each time, so the page is painted once, at the
+  // answer — a visible sweep through every sequence on the page is exactly what we
+  // are trying to avoid. Lenis is then told where we ended up, or it would ease the
+  // page back to where it thought it was.
+  var PROBES = 16;
+
+  function bottom() {
+    return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  }
+
+  function settle(y) {
+    window.scrollTo(0, y);
+    // Pins are transforms ScrollTrigger applies on its own schedule; ask for them
+    // now so the measurement that follows is of the page as it will really look.
+    if (window.ScrollTrigger && ScrollTrigger.update) ScrollTrigger.update();
+    return y;
+  }
 
   function go(target) {
-    var want = -offset();                       // where the target should end up
+    var want = -offset();                 // where the target should end up
+    var from = window.pageYOffset;
+    var lo = 0;
+    var hi = bottom();
+
+    // Already past it? Search the whole page rather than only what lies below.
+    if (target.getBoundingClientRect().top > want) lo = from;
+
+    for (var i = 0; i < PROBES && hi - lo > 1; i++) {
+      var mid = (lo + hi) / 2;
+      settle(mid);
+      if (target.getBoundingClientRect().top > want) lo = mid; else hi = mid;
+    }
+
+    var answer = Math.round(hi);
+    settle(answer);
+
     var lenis = window.cpLenis;
-    var step = 0;
-    var last = null;
-
-    function bottom() {
-      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    }
-
-    function jump(y) {
-      if (lenis && lenis.scrollTo) lenis.scrollTo(y, { immediate: true });
-      else window.scrollTo(0, y);
-    }
-
-    function hop() {
-      var at = window.pageYOffset;
-      var off = target.getBoundingClientRect().top - want;
-      if (Math.abs(off) <= CLOSE) return;       // arrived
-      if (++step > STEPS) return;
-
-      var next = Math.max(0, Math.min(at + off, bottom()));
-      if (next === last || Math.abs(next - at) <= CLOSE) return;   // nowhere left to go
-      last = next;
-      jump(next);
-      window.requestAnimationFrame(hop);
-    }
-
-    hop();
+    if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
   }
 
   // Lenis is stopped for as long as the menu holds the page, so its own state is
