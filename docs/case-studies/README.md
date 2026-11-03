@@ -93,7 +93,14 @@ portrait phone mockups. Left empty, so experiment 03 shows two empty phone shell
 **5. MyRivaaz publish date is a placeholder.** Set to 2026-11-03 (the build date) because
 the content file carries no date. It drives the order of the Case Studies grid.
 
-**6. The Karma & Luck listing card shows no stats.** The Case Studies grid card pulls its
+**6. MyRivaaz and Beyond By Vera have no client logo.** Their listing cards show the hero
+and stats only. Worth knowing: the node named `Logo` at the top of each board in the
+content Figma file (`519:1761` on MyRivaaz, `519:2070` on Beyond By Vera) is **ConvertPolo's
+own header mark**, not the client's — it was used as the MyRivaaz client logo by mistake
+and has been cleared. Neither board carries a clean client logo asset; one has to come from
+elsewhere.
+
+**7. The Karma & Luck listing card shows no stats.** The Case Studies grid card pulls its
 two figures from the CRO collection's Overall impact fields, which the Brand collection
 does not have, so the brand card renders with an empty stat row.
 
