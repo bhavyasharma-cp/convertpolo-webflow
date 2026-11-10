@@ -29,10 +29,42 @@
   var GAP = 24;        // breathing room between the header and the target
   var WAIT = 1200;     // ms to wait for the menu to finish closing
 
-  function offset() {
+  function headerHeight() {
     var header = document.querySelector('[data-cp="header"], .header_component');
-    var height = header ? header.getBoundingClientRect().height : 0;
-    return -(height + GAP);
+    return header ? header.getBoundingClientRect().height : 0;
+  }
+
+  function offset() {
+    return -(headerHeight() + GAP);
+  }
+
+  // Both of these links point into the footer, and what the visitor is asking to see is the
+  // whole of it — the audit form, the contact line and the social links in one screen. Putting
+  // the anchor itself under the header instead shows the contact line with the form cut off
+  // above it, which is what was reported for Contact. So when the target is in the footer, the
+  // footer's own content is what gets framed, not the anchor.
+  //
+  // Measured from the parts rather than the section, because the section carries padding that
+  // is not content: on a service page the content runs 82px to 876px inside a 900px footer.
+  function content(footer) {
+    var parts = footer.querySelectorAll('#audit h2, #audit .footer_form, #contact, .footer_social');
+    var top = Infinity, bottom = -Infinity;
+    for (var i = 0; i < parts.length; i++) {
+      var r = parts[i].getBoundingClientRect();
+      if (!r.height || !r.width) continue;          // the audit form is hidden on some pages
+      if (r.top < top) top = r.top;
+      if (r.bottom > bottom) bottom = r.bottom;
+    }
+    return top === Infinity ? null : { top: top, height: bottom - top };
+  }
+
+  // Where that content should sit: centred in whatever the fixed header leaves, or tucked
+  // just under the header when there is more of it than there is room.
+  function place(height) {
+    var header = headerHeight();
+    var room = window.innerHeight - header;
+    if (height >= room) return header + GAP;
+    return Math.round(header + (room - height) / 2);
   }
 
   // Pinned sections make an anchor's destination unknowable from where you stand.
@@ -66,18 +98,25 @@
   }
 
   function go(target) {
-    var want = -offset();                 // where the target should end up
+    // In the footer it is the footer's content that is framed, not the anchor itself.
+    var footer = target.closest ? target.closest('.footer_component') : null;
+    var piece = footer ? content(footer) : null;
+    var here = piece
+      ? function () { var c = content(footer); return c ? c.top : target.getBoundingClientRect().top; }
+      : function () { return target.getBoundingClientRect().top; };
+    var want = piece ? place(piece.height) : -offset();
+
     var from = window.pageYOffset;
     var lo = 0;
     var hi = bottom();
 
     // Already past it? Search the whole page rather than only what lies below.
-    if (target.getBoundingClientRect().top > want) lo = from;
+    if (here() > want) lo = from;
 
     for (var i = 0; i < PROBES && hi - lo > 1; i++) {
       var mid = (lo + hi) / 2;
       settle(mid);
-      if (target.getBoundingClientRect().top > want) lo = mid; else hi = mid;
+      if (here() > want) lo = mid; else hi = mid;
     }
 
     var answer = Math.round(hi);
@@ -112,6 +151,9 @@
     var target;
     try {
       target = document.querySelector(href);
+      // Pages without an audit form — Careers — still have the contact line, and that is
+      // where someone asking to be contacted should land rather than nowhere at all.
+      if (!target && href === '#audit') target = document.querySelector('#contact');
     } catch (err) {
       return;                                   // not a usable selector
     }
