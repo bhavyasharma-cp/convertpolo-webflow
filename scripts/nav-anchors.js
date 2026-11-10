@@ -134,7 +134,7 @@
       try {
         var drift = Math.round(here() - want);
         if (Math.abs(drift) < 2) return;
-        var fixed = Math.max(0, Math.min(bottom(), answer - drift));
+        var fixed = Math.max(0, Math.min(bottom(), answer + drift));
         settle(fixed);
         if (lenis && lenis.scrollTo) lenis.scrollTo(fixed, { immediate: true });
       } catch (err) {
