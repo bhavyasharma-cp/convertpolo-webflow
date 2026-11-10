@@ -122,8 +122,12 @@
     var answer = Math.round(hi);
     settle(answer);
 
+    // force, because Home's hand-off locks Lenis while it glides to the hero and a locked
+    // Lenis silently ignores a scrollTo — which is why the audit link worked everywhere but
+    // there, and why nothing appeared in a scroll trace: the page was never moved back, it
+    // was never allowed to leave. A link the visitor clicked outranks that lock.
     var lenis = window.cpLenis;
-    if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
+    if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true, force: true, lock: false });
 
     // A ScrollTrigger refresh re-measures every pin and puts the page back where it thinks it
     // was, which on a pinned page is the pin's end and not where we have just landed. One of
@@ -133,7 +137,7 @@
     if (window.ScrollTrigger && ScrollTrigger.addEventListener) {
       var hold = function () {
         settle(answer);
-        if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
+        if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true, force: true, lock: false });
       };
       try {
         ScrollTrigger.addEventListener('refresh', hold);
