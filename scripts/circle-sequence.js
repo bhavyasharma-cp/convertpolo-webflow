@@ -157,7 +157,7 @@
   //     step. A frame is therefore always left showing whole, never part-way through.
   //
   // Both ends count as rest points, or a visitor who meant to leave would be pulled back in.
-  function stepper(zones, busy) {
+  function stepper(zones, last, busy) {
     var FLICK = 60;        // px between scroll events that marks a throw rather than a drag
     var STILL = 140;       // ms of quiet that means the gesture, and its momentum, are over
 
@@ -169,9 +169,13 @@
 
     function settle() {
       timer = null;
-      if (!pin || !pin.isActive || settling || (busy && busy())) return;
+      if (!pin || settling || (busy && busy())) return;
       var p = pin.progress;
-      if (p <= 0 || p >= 1) return;                   // on the way out of the section: let them go
+      // Leaving is only allowed from the ends. A throw from the middle that overshot the pin is
+      // still that gesture's one step, so bring it back — unless the page has gone so far that
+      // the visitor plainly meant to be somewhere else (a menu link to the footer, say).
+      if (p <= 0 || (p >= 1 && shown >= last)) return;
+      if (pin.scroll() > pin.end + window.innerHeight) return;
       var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
       if (Math.abs(want - pin.scroll()) < 2) return;
       settling = true;
@@ -398,7 +402,7 @@
       // ends the pin and plays the zoom out to the whole circle, so the page carries on below it as
       // in 1:4547 → 1:4727 (testimonials right under the circle).
       var zones = last, current = 0, st = mode.stepped;
-      var step = stepper(zones, function () { return !!auto; });
+      var step = stepper(zones, last, function () { return !!auto; });
       var zonePx = function () { return Math.round(window.innerHeight * st.scrollPerStep); };
       var stepPin = window.ScrollTrigger.create({
         trigger: section,
