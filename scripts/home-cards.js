@@ -94,12 +94,6 @@
       }
     });
 
-    // The hero's height is settled late (webfonts, the card videos), and the pin is measured
-    // from it, so take the measurement again once the page has finished arriving.
-    window.addEventListener('load', function () {
-      try { ScrollTrigger.refresh(); } catch (err) { console.debug('[home-cards] refresh', err); }
-    });
-
     // Opening a card by hand moves the scroll to match it, so the next scroll carries on
     // from that card instead of the page snapping back to where it happens to be.
     return function (i) {
