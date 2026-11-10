@@ -226,7 +226,11 @@
         var snap = function () {
           try {
             var end = Math.min(heroTop(), Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
-            if (Math.abs(end - window.scrollY) <= 1) return;
+            var off = Math.abs(end - window.scrollY);
+            // This only ever exists to take up the handful of pixels Lenis stops short by. A
+            // big gap means the visitor has gone somewhere else of their own accord — a footer
+            // link, most often — and dragging them back to the hero is the last thing to do.
+            if (off <= 1 || off > 40) return;
             if (window.cpLenis) window.cpLenis.scrollTo(end, { immediate: true, force: true });
             else window.scrollTo(0, end);
           } catch (err) {
