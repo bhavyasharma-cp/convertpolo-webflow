@@ -128,26 +128,6 @@
     var lenis = window.cpLenis;
     if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
 
-    // The reveal layer eases its blocks into place rather than snapping (scrub: 0.6), so what
-    // the search measured is up to its 32px lift lower than where the content finally rests —
-    // which showed as the footer heading sliding up behind the header after landing. Wait for
-    // that to finish, then take up whatever drift is left. The pins are all behind us by here,
-    // so a pixel of scroll is a pixel of movement and no second search is needed.
-    window.setTimeout(function () {
-      try {
-        // Re-ask for the height as well as the position: the reveal moves the content, and
-        // the footer measures a little taller mid-lift than it does at rest.
-        var now = piece ? content(footer) : null;
-        var aim = now ? place(now.height) : want;
-        var drift = Math.round((now ? now.top : here()) - aim);
-        if (Math.abs(drift) < 2) return;
-        var fixed = Math.max(0, Math.min(bottom(), answer + drift));
-        settle(fixed);
-        if (lenis && lenis.scrollTo) lenis.scrollTo(fixed, { immediate: true });
-      } catch (err) {
-        console.debug('nav-anchors: settle drift', err);
-      }
-    }, 900);
   }
 
   // Lenis is stopped for as long as the menu holds the page, so its own state is

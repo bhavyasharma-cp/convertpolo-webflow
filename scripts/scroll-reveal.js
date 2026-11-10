@@ -50,7 +50,7 @@
     '[data-cp="menu"]', '[data-cp="menu-panel"]', '[data-cp="blog-filter"]',
     '[data-cp-reveal="off"]',
     '.section_cro-cases',          // case-carousel.js drives this one
-    '.footer_bottom',              // site chrome, and the last thing on every page
+    '.footer_component',           // site chrome; and the anchor links land on it, so it must hold still
     'header', 'nav', '.w-form',
     '[aria-hidden="true"]'         // decorative scaffolding, e.g. .cro_grid
   ].join(',');
