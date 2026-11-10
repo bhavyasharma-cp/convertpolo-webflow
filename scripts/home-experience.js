@@ -238,6 +238,10 @@
         // so a single correction here gets lerped away again. Put it right once more after
         // that frame has passed.
         requestAnimationFrame(function () { requestAnimationFrame(snap); });
+        // fitHero re-runs on load and once the webfonts are in, and the hero is the last
+        // thing on the page: a few pixels off its height there and the browser clamps the
+        // scroll back down from the bottom. Check once more after that has had time to land.
+        window.setTimeout(snap, 600);
       }
       // However the glide ends, the page must not be left locked.
       window.setTimeout(function () {
