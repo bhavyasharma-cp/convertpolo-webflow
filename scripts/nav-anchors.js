@@ -64,7 +64,10 @@
     var header = headerHeight();
     var room = window.innerHeight - header;
     if (height >= room) return header + GAP;
-    return Math.round(header + (room - height) / 2);
+    var top = Math.round(header + (room - height) / 2);
+    // Centred, but never so low that the social links drop off the bottom, nor so high that
+    // the heading goes behind the header.
+    return Math.max(header, Math.min(top, window.innerHeight - height));
   }
 
   // Pinned sections make an anchor's destination unknowable from where you stand.
@@ -132,7 +135,11 @@
     // so a pixel of scroll is a pixel of movement and no second search is needed.
     window.setTimeout(function () {
       try {
-        var drift = Math.round(here() - want);
+        // Re-ask for the height as well as the position: the reveal moves the content, and
+        // the footer measures a little taller mid-lift than it does at rest.
+        var now = piece ? content(footer) : null;
+        var aim = now ? place(now.height) : want;
+        var drift = Math.round((now ? now.top : here()) - aim);
         if (Math.abs(drift) < 2) return;
         var fixed = Math.max(0, Math.min(bottom(), answer + drift));
         settle(fixed);
