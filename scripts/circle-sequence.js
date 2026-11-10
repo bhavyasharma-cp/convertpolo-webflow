@@ -160,26 +160,19 @@
   function stepper(zones, busy) {
     var FLICK = 60;        // px between scroll events that marks a throw rather than a drag
     var STILL = 140;       // ms of quiet that means the gesture, and its momentum, are over
-    var points = [0];
-    for (var k = 0; k < zones; k++) points.push((k + 0.5) / zones);
-    points.push(1);
 
-    var rest = 0, prev = null, timer = null, settling = false, pin = null;
+    var rest = 0, shown = 0, prev = null, timer = null, settling = false, pin = null;
 
-    function nearest(p) {
-      var best = 0;
-      for (var i = 1; i < points.length; i++) {
-        if (Math.abs(points[i] - p) < Math.abs(points[best] - p)) best = i;
-      }
-      return points[best];
-    }
+    // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
+    // whose last frame is only reached at the very end rests that one on the pin's end instead.
+    function centre(k) { return k < zones ? (k + 0.5) / zones : 1; }
 
     function settle() {
       timer = null;
       if (!pin || !pin.isActive || settling || (busy && busy())) return;
       var p = pin.progress;
       if (p <= 0 || p >= 1) return;                   // on the way out of the section: let them go
-      var want = Math.round(pin.start + nearest(p) * (pin.end - pin.start));
+      var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
       if (Math.abs(want - pin.scroll()) < 2) return;
       settling = true;
       var done = function () { settling = false; };
@@ -200,7 +193,8 @@
       if (!fast) rest = reached;
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
-      return Math.max(rest - 1, Math.min(rest + 1, reached));
+      shown = Math.max(rest - 1, Math.min(rest + 1, reached));
+      return shown;
     };
   }
 
