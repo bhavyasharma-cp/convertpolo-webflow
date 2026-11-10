@@ -58,16 +58,13 @@
     return top === Infinity ? null : { top: top, height: bottom - top };
   }
 
-  // Where that content should sit: centred in whatever the fixed header leaves, or tucked
-  // just under the header when there is more of it than there is room.
-  function place(height) {
-    var header = headerHeight();
-    var room = window.innerHeight - header;
-    if (height >= room) return header + GAP;
-    var top = Math.round(header + (room - height) / 2);
-    // Centred, but never so low that the social links drop off the bottom, nor so high that
-    // the heading goes behind the header.
-    return Math.max(header, Math.min(top, window.innerHeight - height));
+  // Where that content should sit. On a 900px window the footer's content runs to 842px and
+  // the header takes 89 of what is left, so it cannot all be on screen at once and something
+  // has to give. The heading and the form are the point of both links, so they win: the
+  // content starts just under the header, and the social links sit below the fold on a short
+  // window exactly as they always did for the audit link. On a taller one everything shows.
+  function place() {
+    return headerHeight() + GAP;
   }
 
   // Pinned sections make an anchor's destination unknowable from where you stand.
@@ -107,7 +104,7 @@
     var here = piece
       ? function () { var c = content(footer); return c ? c.top : target.getBoundingClientRect().top; }
       : function () { return target.getBoundingClientRect().top; };
-    var want = piece ? place(piece.height) : -offset();
+    var want = piece ? place() : -offset();
 
     var from = window.pageYOffset;
     var lo = 0;
