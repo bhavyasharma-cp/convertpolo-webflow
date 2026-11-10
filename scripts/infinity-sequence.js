@@ -130,10 +130,11 @@
   //
   // Both ends count as rest points, or a visitor who meant to leave would be pulled back in.
   function stepper(zones, last, busy) {
-    var FLICK = 60;        // px between scroll events that marks a throw rather than a drag
+    var FLICK = 60;        // px between scroll events above which the page is being thrown
+    var DRAG = 300;        // ms of gentle movement that marks a deliberate drag, not a throw's tail
     var STILL = 140;       // ms of quiet that means the gesture, and its momentum, are over
 
-    var rest = 0, shown = 0, prev = null, timer = null, settling = false, jumped = false, pin = null;
+    var rest = 0, shown = 0, prev = null, prevT = 0, slow = 0, timer = null, settling = false, jumped = false, pin = null;
 
     // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
     // whose last frame is only reached at the very end rests that one on the pin's end instead.
@@ -149,6 +150,7 @@
       // moves the page in one go, and that is the visitor asking to be somewhere else.
       if (p <= 0 || (p >= 1 && shown >= last)) return;
       if (jumped) return;
+      rest = shown;                                   // this gesture is spent; the next one starts here
       var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
       if (Math.abs(want - pin.scroll()) < 2) return;
       settling = true;
@@ -165,11 +167,17 @@
     return function (self, reached) {
       pin = self;
       var y = self.scroll();
+      var t = Date.now();
       var moved = prev === null ? 0 : Math.abs(y - prev);
-      var fast = !settling && prev !== null && moved > FLICK;
-      jumped = !settling && moved > 2 * window.innerHeight;
-      prev = y;
-      if (!fast) rest = reached;
+      var dt = prevT ? Math.min(100, t - prevT) : 0;
+      prev = y; prevT = t;
+      if (!settling) {
+        jumped = moved > 2 * window.innerHeight;
+        // The tail of a throw is gentle too, but only briefly; a drag stays gentle for as long as
+        // the finger does. Sustained slow movement, and only that, is taken as consent to carry on.
+        slow = moved <= FLICK ? slow + dt : 0;
+        if (slow >= DRAG) rest = reached;
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
       shown = Math.max(rest - 1, Math.min(rest + 1, reached));
