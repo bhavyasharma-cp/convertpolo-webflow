@@ -210,8 +210,11 @@
 
     function glide() {
       if (done || gliding) return;
-      var top = heroTop();
-      if (top <= SETTLED) { done = true; return; }
+      // On a window taller than the hero the page cannot scroll it flush to the top, so aim
+      // for the furthest the page actually goes rather than a place it can never reach.
+      var most = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var top = Math.min(heroTop(), most);
+      if (top - window.scrollY <= SETTLED) { done = true; return; }
       gliding = true;
 
       function landed() { gliding = false; done = true; }
@@ -333,8 +336,13 @@
         if (window.innerWidth < 768) return;
         var need = inner.offsetHeight;
         var room = window.innerHeight;
-        if (!need || !room || need <= room) return;
-        var k = room / need;
+        if (!need || !room) return;
+        // Taller screens get the same treatment: leaving 1024 in a 1080 window puts a strip
+        // of the screen above showing under the hero, and the hand-off cannot even scroll
+        // that far. Stretching one Figma frame a long way is its own kind of wrong, though,
+        // so past a quarter over it stops and the room is left as room.
+        var k = Math.min(room / need, 1.25);
+        if (Math.abs(k - 1) < 0.002) return;
         // Widen the content by as much as the scale will take back, so the hero still runs
         // edge to edge afterwards. Scaling it as it stands would pull its sides in by the
         // same fraction and leave the grid rule stopping short of both edges.
