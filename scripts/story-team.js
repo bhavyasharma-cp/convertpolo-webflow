@@ -33,8 +33,16 @@
   var BASE_M = { w: 390, h: 1107 };
   var FIRST = 1200, FIRST_M = 1500;   // Figma's opening pause: 1.2s desktop, 1.5s mobile
 
+  var GAP = 24;                  // breathing room between the text and a face below it
+
+  // Ask the same question the stylesheet asks, so the slot table this file reads and the
+  // frame it scales to can never disagree at the breakpoint.
   function isMobile() {
-    return window.innerWidth < 768;
+    try {
+      return window.matchMedia('(max-width: 767px)').matches;
+    } catch (err) {
+      return window.innerWidth < 768;
+    }
   }
 
   // How long a hop takes and how long a face then holds still both come from the page
@@ -55,18 +63,75 @@
     if (members.length < 2) return;
 
     var section = root.parentNode;
+    var copy = section && section.querySelectorAll ? section.querySelectorAll('.story_block') : [];
     var total = members.length;
     var tick = 0;
     var timer = null;
+
+    // The slot geometry lives in the page embed, so read it from there rather than
+    // keeping a second copy here that could drift. A hidden probe wears each slot class
+    // in turn and reports what the stylesheet resolved.
+    function slots() {
+      var probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;top:0;left:0';
+      stage.appendChild(probe);
+      var table = [];
+      try {
+        for (var i = 0; i < SLOTS; i++) {
+          probe.className = 'story_member is-slot-' + i;
+          var cs = getComputedStyle(probe);
+          table.push({
+            x: parseFloat(cs.getPropertyValue('--cp-x')) || 0,
+            y: parseFloat(cs.getPropertyValue('--cp-y')) || 0,
+            s: parseFloat(cs.getPropertyValue('--cp-s')) || 1,
+            w: parseFloat(cs.getPropertyValue('--cp-pw')) || 423
+          });
+        }
+      } catch (err) {
+        console.debug('story-team: ' + err.message);
+      }
+      stage.removeChild(probe);
+      return table;
+    }
+
+    // The fan scales with the viewport but the story text does not, so on anything
+    // narrower than the Figma frame the faces climb towards copy that has grown taller.
+    // Push the fan down by however much it takes to clear the text — but only counting
+    // the slots that actually sit behind it. At 1440 and 390 the slots that overlap the
+    // text horizontally are already well below it, so this returns 0 and both Figma
+    // frames are untouched; it only bites in between, where no Figma frame exists.
+    function clearance(scale, table) {
+      if (!copy.length || !section) return 0;
+      var sr = section.getBoundingClientRect();
+      var pad = stage.getBoundingClientRect().left - sr.left;  // centred once narrower than the page
+      var need = 0;
+      for (var c = 0; c < copy.length; c++) {
+        var tr = copy[c].getBoundingClientRect();
+        var bottom = tr.bottom - sr.top;
+        var left = tr.left - sr.left;
+        var right = tr.right - sr.left;
+        for (var i = 0; i < table.length; i++) {
+          var a = pad + table[i].x * scale;
+          var b = a + table[i].w * table[i].s * scale;
+          if (b <= left || a >= right) continue;   // this face never sits behind the copy
+          need = Math.max(need, bottom + GAP - table[i].y * scale);
+        }
+      }
+      return need > 0 ? Math.round(need) : 0;
+    }
 
     // The fan is drawn at the Figma width; below that it scales down as a whole,
     // the way the tablet sizes fall between the two Figma frames.
     function fit() {
       var base = isMobile() ? BASE_M : BASE;
-      var scale = Math.min(1, window.innerWidth / base.w);
+      var room = root.getBoundingClientRect().width || document.documentElement.clientWidth;
+      var scale = Math.min(1, room / base.w);
       stage.style.setProperty('--cp-scale', scale);
+      stage.style.setProperty('--cp-top', '0px');   // measure the text against an unshifted fan
+      var drop = clearance(scale, slots());
+      stage.style.setProperty('--cp-top', drop + 'px');
       if (section && section.style) {
-        section.style.minHeight = Math.round(base.h * scale) + 'px';
+        section.style.minHeight = Math.round(base.h * scale + drop) + 'px';
       }
     }
 
