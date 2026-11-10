@@ -223,15 +223,21 @@
         // Lenis eases towards the destination and can stop a handful of pixels short of it,
         // which on two full screens reads as a sliver of the one above still showing. Put it
         // exactly on the mark, re-measured in case the page has moved under the glide.
-        try {
-          var end = Math.min(heroTop(), Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
-          if (Math.abs(end - window.scrollY) > 1) {
+        var snap = function () {
+          try {
+            var end = Math.min(heroTop(), Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
+            if (Math.abs(end - window.scrollY) <= 1) return;
             if (window.cpLenis) window.cpLenis.scrollTo(end, { immediate: true, force: true });
             else window.scrollTo(0, end);
+          } catch (err) {
+            console.debug('[experience] landing failed', err);
           }
-        } catch (err) {
-          console.debug('[experience] landing failed', err);
-        }
+        };
+        snap();
+        // Lenis settles its own position on the frame after it reports the scroll finished,
+        // so a single correction here gets lerped away again. Put it right once more after
+        // that frame has passed.
+        requestAnimationFrame(function () { requestAnimationFrame(snap); });
       }
       // However the glide ends, the page must not be left locked.
       window.setTimeout(function () {
