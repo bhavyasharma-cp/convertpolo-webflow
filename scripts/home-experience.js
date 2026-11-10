@@ -321,20 +321,27 @@
   // is left alone.
   function fitHero() {
     var hero = document.querySelector('[data-cp="home-hero"]');
-    if (!hero || !hero.style) return;
+    if (!hero) return;
+    var inner = hero.querySelector('.padding-global');
+    if (!inner || !inner.style) return;
 
     function fit() {
       try {
-        hero.style.transform = '';
-        hero.style.marginBottom = '';
+        inner.style.width = '';
+        inner.style.transform = '';
+        hero.style.height = '';
         if (window.innerWidth < 768) return;
-        var need = hero.offsetHeight;
+        var need = inner.offsetHeight;
         var room = window.innerHeight;
         if (!need || !room || need <= room) return;
         var k = room / need;
-        hero.style.transformOrigin = 'top center';
-        hero.style.transform = 'scale(' + Math.round(k * 10000) / 10000 + ')';
-        hero.style.marginBottom = '-' + Math.round(need - room) + 'px';
+        // Widen the content by as much as the scale will take back, so the hero still runs
+        // edge to edge afterwards. Scaling it as it stands would pull its sides in by the
+        // same fraction and leave the grid rule stopping short of both edges.
+        inner.style.width = Math.round(10000 / k) / 100 + '%';
+        inner.style.transformOrigin = 'top left';
+        inner.style.transform = 'scale(' + Math.round(k * 10000) / 10000 + ')';
+        hero.style.height = Math.round(room) + 'px';
       } catch (err) {
         console.debug('[experience] hero fit failed', err);
       }
@@ -342,10 +349,11 @@
 
     fit();
     window.addEventListener('resize', fit);
-    // Webfonts and the card videos land late and change the height they are measured from.
+    // Webfonts and the card videos land late and change the height this is measured from.
     window.addEventListener('load', fit);
     try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit); } catch (err) { /* ignore */ }
   }
+
 
   function init(root) {
     navGate(root);                 // runs whatever the motion preference is
