@@ -48,7 +48,10 @@
     var at = 0, timer = null, settling = false, pin = null;
 
     function zonePx() { return Math.round(window.innerHeight * ZONE); }
-    function mark(i) { return Math.round(pin.start + ((i + 0.5) / zones) * (pin.end - pin.start)); }
+    // A card rests at the start of its own slice, so the first one rests exactly where the
+    // hand-off above puts the visitor — at the top of the hero — and the slice after the last
+    // one is the room they need to scroll out again.
+    function mark(i) { return Math.round(pin.start + (i / zones) * (pin.end - pin.start)); }
 
     function goTo(y) {
       settling = true;
@@ -64,10 +67,12 @@
     function settle() {
       timer = null;
       if (!pin || !pin.isActive || settling) return;
-      var p = pin.progress;
-      if (p <= 0 || p >= 1) return;            // on the way out of the hero: let them go
+      var y = pin.scroll();
+      // Only between the first card and the last. Past either end the visitor is leaving the
+      // hero, and pulling them back to a card would shut them inside it.
+      if (y <= pin.start || y >= mark(zones - 1)) return;
       var want = mark(at);
-      if (Math.abs(want - pin.scroll()) > 2) goTo(want);
+      if (Math.abs(want - y) > 2) goTo(want);
     }
 
     gsap.registerPlugin(ScrollTrigger);
