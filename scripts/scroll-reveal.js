@@ -50,6 +50,7 @@
     '[data-cp="menu"]', '[data-cp="menu-panel"]', '[data-cp="blog-filter"]',
     '[data-cp-reveal="off"]',
     '.section_cro-cases',          // case-carousel.js drives this one
+    '.footer_bottom',              // site chrome, and the last thing on every page
     'header', 'nav', '.w-form',
     '[aria-hidden="true"]'         // decorative scaffolding, e.g. .cro_grid
   ].join(',');
@@ -82,6 +83,17 @@
     if (!box.width || !box.height) return false;      // hidden or collapsed
     if (box.top < fold) return false;                 // already on screen: leave it be
     return getComputedStyle(el).position !== 'fixed';
+  }
+
+  // Can this element's top still climb to `mark`% of the viewport before the page runs
+  // out of scroll? Anything in the last stretch of the document cannot, and a scrubbed
+  // tween that never reaches its end stays parked part-way through it — faded and 32px
+  // out of place for good. That is how the footer's social icons ended up sitting below
+  // their own labels. Leaving such a block alone is the lesser of the two.
+  function reaches(el, mark) {
+    var top = el.getBoundingClientRect().top + (window.pageYOffset || 0);
+    var most = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    return top - window.innerHeight * (mark / 100) <= most + 1;
   }
 
   function collect() {
@@ -138,6 +150,7 @@
         // once. Each item starts a touch lower down the viewport than the one before,
         // which gives the row its sweep. Capped so a long list does not trail off.
         var beat = Math.min(blocks[i].nth, 4) * STAGGER;
+        if (!reaches(blocks[i].el, END - beat)) continue;
         gsap.fromTo(blocks[i].el,
           { y: RISE, opacity: 0 },
           {
