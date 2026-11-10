@@ -125,6 +125,26 @@
     var lenis = window.cpLenis;
     if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
 
+    // A ScrollTrigger refresh re-measures every pin and puts the page back where it thinks it
+    // was, which on a pinned page is the pin's end and not where we have just landed. One of
+    // those fires when the page finishes loading, so a footer link clicked a moment earlier was
+    // being dragged back to the hero on Home. Hold the landing through any refresh that arrives
+    // in the next few seconds; after that the page has settled and this is no longer its business.
+    if (window.ScrollTrigger && ScrollTrigger.addEventListener) {
+      var hold = function () {
+        settle(answer);
+        if (lenis && lenis.scrollTo) lenis.scrollTo(answer, { immediate: true });
+      };
+      try {
+        ScrollTrigger.addEventListener('refresh', hold);
+        window.setTimeout(function () {
+          try { ScrollTrigger.removeEventListener('refresh', hold); } catch (err) { /* ignore */ }
+        }, 3000);
+      } catch (err) {
+        console.debug('nav-anchors: refresh guard', err);
+      }
+    }
+
   }
 
   // Lenis is stopped for as long as the menu holds the page, so its own state is
