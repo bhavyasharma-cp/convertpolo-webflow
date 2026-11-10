@@ -164,6 +164,18 @@
 
     var rest = 0, shown = 0, prev = null, prevT = 0, slow = 0, timer = null, settling = false, jumped = false, pin = null;
 
+    // What separates a deliberate drag from a throw is simply whether the finger is still down:
+    // everything after it lifts is the platform's momentum, and momentum is what used to carry
+    // the visitor through the whole sequence. Where there is no touch to watch, fall back to how
+    // long the page has been moving gently — a throw's tail is brief, a drag's is not.
+    var touching = false, hasTouch = false;
+    try {
+      hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      window.addEventListener('touchstart', function () { touching = true; }, { passive: true });
+      window.addEventListener('touchend', function () { touching = false; }, { passive: true });
+      window.addEventListener('touchcancel', function () { touching = false; }, { passive: true });
+    } catch (err) { log('touch watch failed', err); }
+
     // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
     // whose last frame is only reached at the very end rests that one on the pin's end instead.
     function centre(k) { return k < zones ? (k + 0.5) / zones : 1; }
@@ -201,10 +213,8 @@
       prev = y; prevT = t;
       if (!settling) {
         jumped = moved > 2 * window.innerHeight;
-        // The tail of a throw is gentle too, but only briefly; a drag stays gentle for as long as
-        // the finger does. Sustained slow movement, and only that, is taken as consent to carry on.
         slow = moved <= FLICK ? slow + dt : 0;
-        if (slow >= DRAG) rest = reached;
+        if (hasTouch ? touching : slow >= DRAG) rest = reached;
       }
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
