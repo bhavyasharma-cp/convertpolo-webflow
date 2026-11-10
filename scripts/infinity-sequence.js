@@ -133,7 +133,7 @@
     var FLICK = 60;        // px between scroll events that marks a throw rather than a drag
     var STILL = 140;       // ms of quiet that means the gesture, and its momentum, are over
 
-    var rest = 0, shown = 0, prev = null, timer = null, settling = false, pin = null;
+    var rest = 0, shown = 0, prev = null, timer = null, settling = false, jumped = false, pin = null;
 
     // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
     // whose last frame is only reached at the very end rests that one on the pin's end instead.
@@ -144,10 +144,11 @@
       if (!pin || settling || (busy && busy())) return;
       var p = pin.progress;
       // Leaving is only allowed from the ends. A throw from the middle that overshot the pin is
-      // still that gesture's one step, so bring it back — unless the page has gone so far that
-      // the visitor plainly meant to be somewhere else (a menu link to the footer, say).
+      // still that gesture's one step, so bring it back. A jump is different from a throw: the
+      // platform's momentum arrives as a long run of small steps, while a menu link to the footer
+      // moves the page in one go, and that is the visitor asking to be somewhere else.
       if (p <= 0 || (p >= 1 && shown >= last)) return;
-      if (pin.scroll() > pin.end + window.innerHeight) return;
+      if (jumped) return;
       var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
       if (Math.abs(want - pin.scroll()) < 2) return;
       settling = true;
@@ -164,7 +165,9 @@
     return function (self, reached) {
       pin = self;
       var y = self.scroll();
-      var fast = !settling && prev !== null && Math.abs(y - prev) > FLICK;
+      var moved = prev === null ? 0 : Math.abs(y - prev);
+      var fast = !settling && prev !== null && moved > FLICK;
+      jumped = !settling && moved > 2 * window.innerHeight;
       prev = y;
       if (!fast) rest = reached;
       window.clearTimeout(timer);
