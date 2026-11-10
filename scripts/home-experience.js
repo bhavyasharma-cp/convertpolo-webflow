@@ -33,6 +33,7 @@
   'use strict';
 
   var BOARD = 1440;          // the Figma board the panels are placed on
+  var WORD = 120;            // the statement's Figma type size, in board units (1:7645)
   var PANEL = 833;           // the two wide panels' own width
   var LINEAR = 'none';
   var GENTLE = 'power2.inOut';   // Figma's "Gentle" spring, near enough
@@ -167,6 +168,15 @@
     if (statement) {
       var track = statement.querySelector('.experience_statement-track');
       var list = statement.querySelectorAll('.experience_statement-word');
+      // Every dimension on this board is a fraction of it, so the board scaling with the
+      // viewport scales the whole composition — except the type, which Webflow pins at
+      // Figma's 120px. At a 1440 viewport the board is 1266 wide, so the window shrinks to
+      // 641 while the word still wants 713, and EXPERIENCE. lost its last letter and a half
+      // to the clip. Scale the type with the board like everything else here. Figma 1:7645:
+      // 120px Medium, tracking -3.6px, in a 729x128 window (50.625% x 12.5% of the board).
+      for (var f = 0; f < list.length; f++) {
+        gsap.set(list[f], { fontSize: Math.round(WORD * u * 100) / 100 + 'px' });
+      }
       var step = statement.clientHeight;
       if (track && list.length > 1 && step) {
         for (var w = 0; w < list.length; w++) gsap.set(list[w], { y: w * step });
@@ -183,58 +193,79 @@
     return { master: master, loop: loop };
   }
 
-  // Figma holds 1:11076 for 4s and then glides to the hero in 0.8s. A page cannot take
-  // that liberty blindly, so this only fires while the visitor has done nothing: the
-  // first wheel, touch, key or scroll of their own calls it off for good, and it never
-  // runs twice or when the page is already scrolled.
+  // Figma holds 1:11076 for 4s and then glides to the hero in 0.8s. Two things start that
+  // glide here: the hold running out while the visitor sits still, and — because these are
+  // two whole screens, not a scrolling page — the visitor's own first move downwards. One
+  // gesture should land on the hero rather than leaving them stranded between the two, which
+  // is what free scrolling did. The glide is locked while it runs so the gesture that began
+  // it cannot also scroll past it, and it happens once.
   function handOff() {
     var hero = document.querySelector('[data-cp="home-hero"]');
     if (!hero) return;
 
-    var off = false;
+    var done = false;          // handed over, or given up on
     var gliding = false;       // our own scrolling must not read as theirs
-    function cancel() { off = true; }
-    var signals = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
-    for (var i = 0; i < signals.length; i++) {
-      window.addEventListener(signals[i], cancel, { passive: true });
-    }
-    window.addEventListener('scroll', function () {
-      if (!gliding && window.scrollY > SETTLED) cancel();
-    }, { passive: true });
 
-    gsap.delayedCall(ENTRANCE + HOLD, function () {
-      if (off || window.scrollY > SETTLED) return;
-      var top = hero.getBoundingClientRect().top + window.scrollY;
-      if (top <= SETTLED) return;
+    function heroTop() { return Math.round(hero.getBoundingClientRect().top + window.scrollY); }
+
+    function glide() {
+      if (done || gliding) return;
+      var top = heroTop();
+      if (top <= SETTLED) { done = true; return; }
       gliding = true;
 
+      function landed() { gliding = false; done = true; }
+      // However the glide ends, the page must not be left locked.
+      window.setTimeout(function () {
+        if (!gliding) return;
+        landed();
+        try { if (window.cpLenis) window.cpLenis.start(); } catch (err) { console.debug('[experience] unlock failed', err); }
+      }, (GLIDE + 1.2) * 1000);
+
       // With smooth scrolling on, Lenis owns the scroll position — driving window.scrollTo
-      // per frame would just fight its lerp. Hand it the destination instead.
+      // per frame would just fight its lerp. Hand it the destination instead, and lock it so
+      // the wheel or swipe that asked for the hero does not also carry on past it.
       if (window.cpLenis) {
-        window.cpLenis.scrollTo(top, {
-          duration: GLIDE,
-          onComplete: function () { gliding = false; }
-        });
+        window.cpLenis.scrollTo(top, { duration: GLIDE, lock: true, force: true, onComplete: landed });
         return;
       }
 
       var at = { y: window.scrollY };
-      var glide = gsap.to(at, {
-        y: top,
-        duration: GLIDE,
-        ease: OUT,
-        onUpdate: function () {
-          if (off) {                        // they grabbed the wheel mid-glide
-            glide.kill();
-            gliding = false;
-            return;
-          }
-          window.scrollTo(0, at.y);
-        },
-        onComplete: function () { gliding = false; }
+      gsap.to(at, {
+        y: top, duration: GLIDE, ease: OUT,
+        onUpdate: function () { window.scrollTo(0, at.y); },
+        onComplete: landed
       });
+    }
+
+    // Figma's own hold, for a visitor who does nothing.
+    gsap.delayedCall(ENTRANCE + HOLD, function () {
+      if (window.scrollY > SETTLED) { done = true; return; }
+      glide();
     });
+
+    // ... and the visitor's first move downwards, whichever comes first.
+    function take(down) {
+      if (done || gliding) return;
+      if (window.scrollY > SETTLED) { done = true; return; }   // already past: leave them alone
+      if (down) glide();
+    }
+    window.addEventListener('wheel', function (e) { take(!e || e.deltaY > 0); }, { passive: true });
+    window.addEventListener('keydown', function (e) {
+      var k = e && e.key;
+      if (k === 'ArrowDown' || k === 'PageDown' || k === ' ' || k === 'Spacebar') take(true);
+    });
+    var from = null;
+    window.addEventListener('touchstart', function (e) {
+      from = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+    }, { passive: true });
+    window.addEventListener('touchmove', function (e) {
+      var y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+      if (from === null || y === null) return;
+      if (from - y > 8) take(true);
+    }, { passive: true });
   }
+
 
   // Figma puts the logo on the intro frames but the Nav only on the hero frame
   // (230:5852 inside 117:3974), so Menu / Get Website Audit wait for the hero rather
@@ -281,8 +312,44 @@
     }
   }
 
+  // Figma's hero is one 1024-tall frame and it is built at that size, so on any laptop
+  // shorter than 1024 the service card at the bottom is cut off — the screen the visitor
+  // lands on after the hand-off is the one screen that must be whole. Scale the section to
+  // the height it actually has, the way the board above it already scales to its width, and
+  // take the difference back out of the flow so the page is no taller than what it shows.
+  // Below 768 there is no hand-off and the hero is a column that is meant to scroll, so it
+  // is left alone.
+  function fitHero() {
+    var hero = document.querySelector('[data-cp="home-hero"]');
+    if (!hero || !hero.style) return;
+
+    function fit() {
+      try {
+        hero.style.transform = '';
+        hero.style.marginBottom = '';
+        if (window.innerWidth < 768) return;
+        var need = hero.offsetHeight;
+        var room = window.innerHeight;
+        if (!need || !room || need <= room) return;
+        var k = room / need;
+        hero.style.transformOrigin = 'top center';
+        hero.style.transform = 'scale(' + Math.round(k * 10000) / 10000 + ')';
+        hero.style.marginBottom = '-' + Math.round(need - room) + 'px';
+      } catch (err) {
+        console.debug('[experience] hero fit failed', err);
+      }
+    }
+
+    fit();
+    window.addEventListener('resize', fit);
+    // Webfonts and the card videos land late and change the height they are measured from.
+    window.addEventListener('load', fit);
+    try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit); } catch (err) { /* ignore */ }
+  }
+
   function init(root) {
     navGate(root);                 // runs whatever the motion preference is
+    fitHero();
     if (reduced()) return rest(root);
 
     var running = null;
