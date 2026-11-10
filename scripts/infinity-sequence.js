@@ -92,7 +92,7 @@
       stageTop: 139, frameHeight: 844,                 // frame 1:902 (390×844)
       // Stepped, like the prototype: each step owns a slice of the scroll, and entering it plays
       // the frame's own transition (Smart Animate 0.6s ease-out) instead of following the finger.
-      stepped: { duration: 0.6, scrollPerStep: 0.5 },
+      stepped: { duration: 0.6, scrollPerStep: 1 },
       slideOut: null
     }
   };
@@ -112,6 +112,68 @@
       u = Math.min(1, Math.max(0, u - x / dx));
     }
     return 3 * (1 - u) * u * u + u * u * u;
+  }
+
+  // Phones: keep the sequence to one step per gesture.
+  //
+  // A flick carries far more scroll than a step is worth, so the whole sequence used to go by
+  // in a single throw and the visitor saw only the last frame — reported as the animation
+  // "cutting", and on a large phone as no animation at all, while a slow drag worked fine.
+  // Two things hold the prototype's pace without taking the scroll away from the visitor:
+  //
+  //   - the step shown is capped at one beyond the step the gesture started from, so a throw
+  //     plays one transition instead of racing through five. A slow drag is never capped, so
+  //     scrolling through step by step behaves exactly as before;
+  //   - once the finger is off AND the platform's momentum has died (every scroll event pushes
+  //     the timer back, so it only fires on real stillness), the page settles on the nearest
+  //     step. A frame is therefore always left showing whole, never part-way through.
+  //
+  // Both ends count as rest points, or a visitor who meant to leave would be pulled back in.
+  function stepper(zones, busy) {
+    var FLICK = 60;        // px between scroll events that marks a throw rather than a drag
+    var STILL = 140;       // ms of quiet that means the gesture, and its momentum, are over
+    var points = [0];
+    for (var k = 0; k < zones; k++) points.push((k + 0.5) / zones);
+    points.push(1);
+
+    var rest = 0, prev = null, timer = null, settling = false, pin = null;
+
+    function nearest(p) {
+      var best = 0;
+      for (var i = 1; i < points.length; i++) {
+        if (Math.abs(points[i] - p) < Math.abs(points[best] - p)) best = i;
+      }
+      return points[best];
+    }
+
+    function settle() {
+      timer = null;
+      if (!pin || !pin.isActive || settling || (busy && busy())) return;
+      var p = pin.progress;
+      if (p <= 0 || p >= 1) return;                   // on the way out of the section: let them go
+      var want = Math.round(pin.start + nearest(p) * (pin.end - pin.start));
+      if (Math.abs(want - pin.scroll()) < 2) return;
+      settling = true;
+      var done = function () { settling = false; };
+      window.setTimeout(done, 900);                   // never leave the flag stuck
+      try {
+        if (window.cpLenis) window.cpLenis.scrollTo(want, { duration: 0.35, onComplete: done });
+        else { window.scrollTo(0, want); done(); }
+      } catch (err) { done(); log('settle failed', err); }
+    }
+
+    // Call from the pin's onUpdate with the step the scroll has actually reached; returns the
+    // step to show.
+    return function (self, reached) {
+      pin = self;
+      var y = self.scroll();
+      var fast = !settling && prev !== null && Math.abs(y - prev) > FLICK;
+      prev = y;
+      if (!fast) rest = reached;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(settle, STILL);
+      return Math.max(rest - 1, Math.min(rest + 1, reached));
+    };
   }
 
   function log(msg, e) { try { console.debug('[infinity] ' + msg, e || ''); } catch (_) {} }
@@ -279,8 +341,9 @@
 
     if (mode.stepped) {
       // One slice of scroll per frame (01…05, whole). Crossing into a slice plays the prototype's
-      // transition to that frame; fast flicks go straight to the frame that was reached.
+      // transition to that frame, one step per gesture however hard the flick — see stepper().
       var zones = last + 1, current = 0, st = mode.stepped;
+      var step = stepper(zones, null);
       window.ScrollTrigger.create({
         trigger: section,
         start: function () { return 'top ' + pinTop() + 'px'; },
@@ -290,7 +353,7 @@
         invalidateOnRefresh: true,
         onToggle: engage,
         onUpdate: function (self) {
-          var target = Math.min(last, Math.floor(self.progress * zones));
+          var target = step(self, Math.min(last, Math.floor(self.progress * zones)));
           if (target === current) return;
           current = target;
           gsap.to(state, { p: target, duration: st.duration, ease: figmaEaseOut, overwrite: true, onUpdate: render });
