@@ -458,7 +458,10 @@
         try { window.ScrollTrigger.addEventListener('refresh', again); } catch (err) {
           console.debug('[experience] refresh hook failed', err);
         }
-        again();
+        // Nothing more here: re-fitting the moment ScrollTrigger appeared cleared the
+        // hero's height while the pin was still measuring, and the pin then recorded the
+        // section's natural height instead of the window's. The fit at load has run; the
+        // hook is for the refreshes that come later.
       } else if (hooked >= 8000) {
         window.clearInterval(hook);
       }
