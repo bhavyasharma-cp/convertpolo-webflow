@@ -84,8 +84,9 @@ Custom code rules:
   second copy. Plugins come from the same path and version.
 - Loading: the Webflow-registered inline script **CPAnimations** (id `cpanimations`) injects
   ScrollTrigger and the Pages-hosted files in order. It is applied per page with
-  `set_page_scripts` (the API cannot write the site-wide or freeform custom-code boxes on this
-  site). To add an animation: add its URL to the loader's list, bump the loader version, and
+  `set_page_scripts`, or site-wide with `set_site_scripts` (both work; the site-wide **freeform**
+  custom-code box is writable too, with `set_site_freeform_code` — it holds the mobile
+  scrollbar CSS). To add an animation: add its URL to the loader's list, bump the loader version, and
   apply it to the pages that need it. Scripts must wait for `window.gsap` — Webflow injects it late.
 - Scripts find their section by a data attribute, never by class: `data-cp="infinity"`,
   `data-cp="circle"`, `data-cp="intro"`. Each script initialises every instance on the page,
