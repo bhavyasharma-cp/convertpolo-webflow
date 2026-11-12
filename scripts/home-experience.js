@@ -351,14 +351,39 @@
   // take the difference back out of the flow so the page is no taller than what it shows.
   // Below 768 there is no hand-off and the hero is a column that is meant to scroll, so it
   // is left alone.
+  //
+  // The section is `overflow:hidden` at the height of the window, so anything this gets
+  // wrong is not a loose layout — it is a card with its bottom sliced off. Everything
+  // below is about never ending up there: it runs whether or not the EXPERIENCE screen
+  // and GSAP ever turn up, it re-measures after the content has reflowed, and it checks
+  // again for as long as late-loading parts can still change the height.
+  var fitted = false;
   function fitHero() {
+    if (fitted) return;
     var hero = document.querySelector('[data-cp="home-hero"]');
     if (!hero) return;
     var inner = hero.querySelector('.padding-global');
     if (!inner || !inner.style) return;
+    fitted = true;
+
+    function apply(k) {
+      // Widen the content by as much as the scale will take back, so the hero still runs
+      // edge to edge afterwards. Scaling it as it stands would pull its sides in by the
+      // same fraction and leave the grid rule stopping short of both edges.
+      inner.style.width = Math.round(10000 / k) / 100 + '%';
+      inner.style.transformOrigin = 'top left';
+      inner.style.transform = 'scale(' + Math.round(k * 10000) / 10000 + ')';
+    }
+
+    // What the last fit settled on, so a re-check that finds nothing changed costs one
+    // measurement and leaves the layout alone — these run during the hand-off glide, and
+    // clearing and re-applying the scale under it would show as a jump.
+    var last = null;
 
     function fit() {
       try {
+        if (last && window.innerHeight === last.room && Math.abs(inner.offsetHeight - last.need) < 1) return;
+        last = null;
         inner.style.width = '';
         inner.style.transform = '';
         hero.style.height = '';
@@ -371,24 +396,72 @@
         // that far. Stretching one Figma frame a long way is its own kind of wrong, though,
         // so past a quarter over it stops and the room is left as room.
         var k = Math.min(room / need, 1.25);
-        if (Math.abs(k - 1) < 0.002) return;
-        // Widen the content by as much as the scale will take back, so the hero still runs
-        // edge to edge afterwards. Scaling it as it stands would pull its sides in by the
-        // same fraction and leave the grid rule stopping short of both edges.
-        inner.style.width = Math.round(10000 / k) / 100 + '%';
-        inner.style.transformOrigin = 'top left';
-        inner.style.transform = 'scale(' + Math.round(k * 10000) / 10000 + ')';
+        // Changing the width reflows the content, and text that wraps onto one more line
+        // is taller than the height the scale was worked out from — which is how a card
+        // ends up over the bottom edge of a section that clips. Measure again at the width
+        // it will actually have, and settle on a scale that still holds after the reflow.
+        for (var pass = 0; pass < 4 && Math.abs(k - 1) >= 0.002; pass++) {
+          apply(k);
+          var after = inner.offsetHeight;
+          if (Math.abs(after - need) < 1) break;
+          need = after;
+          var next = Math.min(room / need, 1.25);
+          if (Math.abs(next - k) < 0.002) break;
+          k = next;
+        }
+        // Whatever the passes above settled on, the one thing that must be true is that it
+        // fits. If it still does not — a layout that will not converge — give up the scale
+        // rather than the card.
+        if (Math.abs(k - 1) >= 0.002 && k * inner.offsetHeight > room + 1) {
+          k = room / inner.offsetHeight;
+          apply(k);
+        }
+        if (Math.abs(k - 1) < 0.002) {
+          inner.style.width = '';
+          inner.style.transform = '';
+          last = { room: room, need: inner.offsetHeight };
+          return;
+        }
         hero.style.height = Math.round(room) + 'px';
+        // While the cards' pin holds the hero, ScrollTrigger has copied the height it had
+        // when it was pinned into an inline max-height of its own. A later fit that makes
+        // the hero taller — a window that grew, a late reflow — would otherwise be clamped
+        // back to that old height, and the section clips: the card loses its bottom.
+        if (hero.style.maxHeight) hero.style.maxHeight = Math.round(room) + 'px';
+        last = { room: room, need: inner.offsetHeight };
       } catch (err) {
         console.debug('[experience] hero fit failed', err);
       }
     }
 
+    function again() { last = null; fit(); }
+
     fit();
     window.addEventListener('resize', fit);
-    // Webfonts and the card videos land late and change the height this is measured from.
+    // The cards' pin owns the hero while it is pinned, and every ScrollTrigger refresh puts
+    // the element back the way it found it first — including the height this sets. The page
+    // refreshes whenever something below changes its height, and the forms do that long
+    // after load, so without this the hero quietly loses its fit and the section, which
+    // clips, cuts the card off at the bottom of the window. Put it back after each refresh.
+    var hooked = 0;
+    var hook = window.setInterval(function () {
+      hooked += 100;
+      if (window.ScrollTrigger) {
+        window.clearInterval(hook);
+        try { window.ScrollTrigger.addEventListener('refresh', again); } catch (err) {
+          console.debug('[experience] refresh hook failed', err);
+        }
+        again();
+      } else if (hooked >= 8000) {
+        window.clearInterval(hook);
+      }
+    }, 100);
+    // Webfonts, the card videos and the forms all land late and change the height this is
+    // measured from, and some of them report nothing when they do. Keep checking while
+    // that is still possible, then stop.
     window.addEventListener('load', fit);
     try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit); } catch (err) { /* ignore */ }
+    [400, 1200, 3000].forEach(function (ms) { window.setTimeout(fit, ms); });
   }
 
 
@@ -452,13 +525,22 @@
   }
 
   function ready() {
+    // The hero's fit is not the EXPERIENCE screen's business and needs neither GSAP nor
+    // that section: it is plain layout, and without it the hero is cut off at the bottom
+    // of the window. Do it first, so nothing further down this function can cost the
+    // visitor the one screen they land on.
+    try { fitHero(); } catch (err) { console.debug('[experience] hero fit failed', err); }
+
     if (window.gsap) return boot();
     var waited = 0;
+    // Webflow injects GSAP late, and on a slow connection with a heavy page it can take
+    // several seconds. Wait as long as home-cards.js does rather than giving up first.
     var poll = setInterval(function () {
       waited += 50;
-      if (window.gsap || waited >= 3000) {
+      if (window.gsap || waited >= 6000) {
         clearInterval(poll);
         if (window.gsap) boot();
+        else console.debug('[experience] no GSAP; screen stays still');
       }
     }, 50);
   }
