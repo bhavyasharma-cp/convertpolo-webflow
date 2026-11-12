@@ -80,18 +80,23 @@
     var cards = Array.prototype.slice.call(section.querySelectorAll('.cro-metric'));
     if (!cards.length) return;
 
+    // The badge bars are parked below their pill in CSS, as they are in the Figma frame,
+    // and rise once this class arrives. Every path out of this function sets it, so a card
+    // that never animates still ends up showing a finished chart rather than a bare pill.
+    function show() { section.classList.add('is-shown'); }
+
     var starts = [];
     var i;
     for (i = 0; i < cards.length; i++) {
       var box = cards[i].getBoundingClientRect();
-      if (!box.width) return;                      // hidden at this breakpoint
+      if (!box.width) { show(); return; }           // hidden at this breakpoint
       var off = i < OFF.length ? OFF[i] : FALLBACK_OFF;
       starts.push(fromLeft(cards[i])
         ? -(box.right + off)                       // clear of the left edge
         : (window.innerWidth - box.left) + off);   // clear of the right edge
     }
 
-    if (reduced()) return;                         // leave them where they are
+    if (reduced()) { show(); return; }             // leave them where they are
 
     var clipped = section.style.overflow;
     section.style.overflow = 'hidden';
@@ -101,7 +106,7 @@
       x: 0,
       duration: DURATION,
       ease: EASE,
-      scrollTrigger: { trigger: section, start: START, once: true },
+      scrollTrigger: { trigger: section, start: START, once: true, onEnter: show },
       onComplete: function () {
         section.style.overflow = clipped;
         gsap.set(cards, { clearProps: 'transform' });
@@ -110,9 +115,13 @@
   }
 
   function boot() {
-    if (!window.gsap || !window.ScrollTrigger) return;
-    gsap.registerPlugin(ScrollTrigger);
     var sections = document.querySelectorAll('[data-cp="metrics"]');
+    if (!window.gsap || !window.ScrollTrigger) {
+      // No GSAP: no slide-in, but the badges still need their finished chart.
+      for (var n = 0; n < sections.length; n++) sections[n].classList.add('is-shown');
+      return;
+    }
+    gsap.registerPlugin(ScrollTrigger);
     for (var i = 0; i < sections.length; i++) {
       try {
         init(sections[i]);
