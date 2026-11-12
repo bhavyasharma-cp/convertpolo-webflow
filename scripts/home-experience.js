@@ -434,7 +434,14 @@
       }
     }
 
-    function again() { last = null; fit(); }
+    // ScrollTrigger writes the pin's own height while it refreshes, and whether that
+    // lands before or after this does is not ours to decide — so re-apply on the frame
+    // after as well, and once more when the refresh has fully settled.
+    function again() {
+      last = null; fit();
+      requestAnimationFrame(function () { last = null; fit(); });
+      window.setTimeout(function () { last = null; fit(); }, 150);
+    }
 
     fit();
     window.addEventListener('resize', fit);
