@@ -95,6 +95,10 @@
         if (x <= b) {
           if (b <= a) return (i + 1) * gap;
           var f = Math.min(1, Math.max(0, (x - a) / (b - a)));
+          // Near a card, sit on its tall tick: scroll snapping can settle a few pixels off the
+          // computed position, and that must not leave the orange one tick beside the review.
+          if (f < 0.15) return i * gap;
+          if (f > 0.85) return (i + 1) * gap;
           return Math.round((i + f) * gap);
         }
       }
