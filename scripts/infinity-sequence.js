@@ -141,11 +141,16 @@
     // the visitor through the whole sequence. Where there is no touch to watch, fall back to how
     // long the page has been moving gently — a throw's tail is brief, a drag's is not.
     var touching = false, hasTouch = false;
+    // A touch gesture is the finger on the glass plus the momentum after it lifts. It may move
+    // one step from the step it started on, and no further: a long, fast flick used to count as
+    // a deliberate drag while the finger was down, so it ran through several steps before the
+    // cap applied, and could throw the page right out of the sequence into the next section.
+    var from = 0, lastTouch = 0, MOMENTUM = 1200;
     try {
       hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      window.addEventListener('touchstart', function () { touching = true; }, { passive: true });
-      window.addEventListener('touchend', function () { touching = false; }, { passive: true });
-      window.addEventListener('touchcancel', function () { touching = false; }, { passive: true });
+      window.addEventListener('touchstart', function () { touching = true; from = shown; lastTouch = Date.now(); }, { passive: true });
+      window.addEventListener('touchend', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
+      window.addEventListener('touchcancel', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
     } catch (err) { log('touch watch failed', err); }
 
     // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
@@ -183,10 +188,28 @@
       var moved = prev === null ? 0 : Math.abs(y - prev);
       var dt = prevT ? Math.min(100, t - prevT) : 0;
       prev = y; prevT = t;
+      var gesture = hasTouch && (touching || t - lastTouch < MOMENTUM);
       if (!settling) {
         jumped = moved > 2 * window.innerHeight;
         slow = moved <= FLICK ? slow + dt : 0;
-        if (hasTouch ? touching : slow >= DRAG) rest = reached;
+        if (gesture) rest = from;
+        else if (!hasTouch && slow >= DRAG) rest = reached;
+      }
+      // Hold the page inside the one step this gesture may reach, so a hard flick stops at that
+      // step's edge instead of running on (and, from mid-sequence, out of the pin). Leaving is
+      // still a gesture that starts on an end step, and a jump (a menu link) is never held.
+      if (gesture && !settling && !jumped) {
+        try {
+          var span = self.end - self.start;
+          var hi = rest < last ? self.start + Math.min(zones, rest + 2) / zones * span - 2 : Infinity;
+          var lo = rest > 0 ? self.start + (rest - 1) / zones * span + 2 : -Infinity;
+          if (y > hi || y < lo) {
+            y = y > hi ? hi : lo;
+            if (window.cpLenis) window.cpLenis.scrollTo(y, { immediate: true, force: true });
+            else window.scrollTo(0, y);
+            reached = Math.min(last, Math.floor((y - self.start) / span * zones));
+          }
+        } catch (err) { log('hold failed', err); }
       }
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
