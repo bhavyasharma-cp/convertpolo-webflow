@@ -146,9 +146,28 @@
     // a deliberate drag while the finger was down, so it ran through several steps before the
     // cap applied, and could throw the page right out of the sequence into the next section.
     var from = 0, lastTouch = 0, MOMENTUM = 1200;
+    // The pin stops reporting once a fast flick has carried the page out of it, so the hold is
+    // also enforced on every window scroll while the gesture and its momentum last.
+    var holdHi = Infinity, holdLo = -Infinity, latch = null;
+    function inGesture() { return hasTouch && (touching || Date.now() - lastTouch < MOMENTUM); }
+    try {
+      window.addEventListener('scroll', function () {
+        if (!pin || settling || jumped || !inGesture()) return;
+        var y = window.pageYOffset;
+        if (y <= holdHi && y >= holdLo) return;
+        y = y > holdHi ? holdHi : holdLo;
+        if (window.cpLenis) window.cpLenis.scrollTo(y, { immediate: true, force: true });
+        else window.scrollTo(0, y);
+      }, { passive: true });
+    } catch (err) { log('hold watch failed', err); }
     try {
       hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      window.addEventListener('touchstart', function () { touching = true; from = shown; lastTouch = Date.now(); }, { passive: true });
+      window.addEventListener('touchstart', function () { touching = true; lastTouch = Date.now(); holdHi = Infinity; holdLo = -Infinity; latch = null;
+        // A gesture that starts above the sequence may only enter it (step 1), and one that
+        // starts below it may only come back to the last frame.
+        var y0 = window.pageYOffset;
+        from = pin && y0 < pin.start - 10 ? -1 : pin && y0 > pin.end + 10 ? last + 1 : shown;
+      }, { passive: true });
       window.addEventListener('touchend', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
       window.addEventListener('touchcancel', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
     } catch (err) { log('touch watch failed', err); }
@@ -165,7 +184,12 @@
       // still that gesture's one step, so bring it back. A jump is different from a throw: the
       // platform's momentum arrives as a long run of small steps, while a menu link to the footer
       // moves the page in one go, and that is the visitor asking to be somewhere else.
-      if (p <= 0 || (p >= 1 && shown >= last)) return;
+      // On touch, leaving needs a gesture that started on that end (rest is the gesture's start
+      // step until it settles), so a flick from step 5 shows the whole view instead of running
+      // through it and out of the sequence.
+      var leaveTop = hasTouch ? rest <= 0 : true;
+      var leaveEnd = hasTouch ? rest >= last && shown >= last : shown >= last;
+      if ((p <= 0 && leaveTop) || (p >= 1 && leaveEnd)) return;
       if (jumped) return;
       rest = shown;                                   // this gesture is spent; the next one starts here
       var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
@@ -180,14 +204,18 @@
     }
 
     // Call from the pin's onUpdate with the step the scroll has actually reached; returns the
-    // step to show.
-    return function (self, reached) {
+    // step to show. attach(pin) hands over the pin as soon as it exists, so a gesture that starts
+    // above or below the sequence before it was ever entered is still recognised as such.
+    function update(self, reached) {
       pin = self;
       var y = self.scroll();
       var t = Date.now();
       var moved = prev === null ? 0 : Math.abs(y - prev);
       var dt = prevT ? Math.min(100, t - prevT) : 0;
       prev = y; prevT = t;
+      // At the pin's very end the reported progress can stay a hair under 1, which kept the last
+      // frame (reached only at progress 1 on the circle and wave pages) from ever showing.
+      if (y >= self.end - 1) reached = Math.max(reached, Math.min(last, zones));
       var gesture = hasTouch && (touching || t - lastTouch < MOMENTUM);
       if (!settling) {
         jumped = moved > 2 * window.innerHeight;
@@ -201,8 +229,11 @@
       if (gesture && !settling && !jumped) {
         try {
           var span = self.end - self.start;
-          var hi = rest < last ? self.start + Math.min(zones, rest + 2) / zones * span - 2 : Infinity;
+          // The step after rest ends at its slice's far edge; where the last frame lives at the
+          // pin's very end (circle, wave: zones === last), that edge is the end itself.
+          var hi = rest >= last ? Infinity : rest + 1 >= zones ? self.end + 1 : self.start + (rest + 2) / zones * span - 2;
           var lo = rest > 0 ? self.start + (rest - 1) / zones * span + 2 : -Infinity;
+          holdHi = hi; holdLo = lo;
           if (y > hi || y < lo) {
             y = y > hi ? hi : lo;
             if (window.cpLenis) window.cpLenis.scrollTo(y, { immediate: true, force: true });
@@ -214,8 +245,18 @@
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
       shown = Math.max(rest - 1, Math.min(rest + 1, reached));
+      // Once a gesture's momentum has reached the next step, it keeps it: at the pin's very end the
+      // progress can read a hair under 1 on the next frame, which used to drop the last frame and
+      // pull the page back. While the finger is down the visitor can still change their mind.
+      if (gesture) {
+        if (touching) latch = shown !== rest ? shown : null;
+        else if (shown !== rest) latch = shown;
+        else if (latch !== null) shown = latch;
+      }
       return shown;
-    };
+    }
+    update.attach = function (self) { if (!pin) pin = self; };
+    return update;
   }
 
   // Desktop: after the sequence, one wheel or trackpad gesture is one step (whole → reviews →
@@ -471,7 +512,7 @@
       // transition to that frame, one step per gesture however hard the flick — see stepper().
       var zones = last + 1, current = 0, st = mode.stepped;
       var step = stepper(zones, last, null);
-      window.ScrollTrigger.create({
+      var stepPin = window.ScrollTrigger.create({
         trigger: section,
         start: function () { return 'top ' + pinTop() + 'px'; },
         end: function () { return '+=' + Math.round(window.innerHeight * st.scrollPerStep * zones); },
@@ -486,6 +527,7 @@
           gsap.to(state, { p: target, duration: st.duration, ease: figmaEaseOut, overwrite: true, onUpdate: render });
         }
       });
+      step.attach(stepPin);
       render();
       return;
     }
