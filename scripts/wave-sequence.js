@@ -448,13 +448,24 @@
         var k = size / (p.r * 2) / s;
         d.setAttribute('transform', 'translate(' + (x - tx) / s + ' ' + (y - ty) / s + ') scale(' + k + ') translate(' + -p.x + ' ' + -p.y + ')');
       });
+      // Phones: step text cross-fades in place instead of panning with the camera. In Figma's
+      // Smart Animate every element slides to the next frame, so a step's heading travelled up
+      // through the fixed header and was cut off there mid-transition (the visitor saw the
+      // heading vanish). Here a step's text holds its resting place, fades out over the first
+      // half of the transition and the next frame's text fades in at its own resting place over
+      // the second half; the path, dots and videos still pan exactly as before.
+      var fade = !!mode.stepped;
+      var g = fade ? (f < 0.5 ? 0 : 1) : f;
+      var textAlpha = fade ? Math.min(1, Math.abs(f - 0.5) * 2) : null;
       c.steps.forEach(function (el, n) {
-        gsap.set(el, {
-          x: lerp(a.text[n][0], b.text[n][0], f) - base[n].x,
-          y: lerp(a.text[n][1], b.text[n][1], f) - base[n].y,
-          width: lerp(a.text[n][2], b.text[n][2], f)
-        });
-        var inset = lerp(a.text[n][3] || 0, b.text[n][3] || 0, f);
+        var props = {
+          x: lerp(a.text[n][0], b.text[n][0], g) - base[n].x,
+          y: lerp(a.text[n][1], b.text[n][1], g) - base[n].y,
+          width: lerp(a.text[n][2], b.text[n][2], g)
+        };
+        if (fade) props.opacity = textAlpha;
+        gsap.set(el, props);
+        var inset = lerp(a.text[n][3] || 0, b.text[n][3] || 0, g);
         if (c.paras[n]) gsap.set(c.paras[n], { paddingLeft: inset, paddingRight: inset });
       });
       media.forEach(function (el, n) {
