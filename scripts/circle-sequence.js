@@ -169,35 +169,11 @@
     // the visitor through the whole sequence. Where there is no touch to watch, fall back to how
     // long the page has been moving gently — a throw's tail is brief, a drag's is not.
     var touching = false, hasTouch = false;
-    // A touch gesture is the finger on the glass plus the momentum after it lifts. It may move
-    // one step from the step it started on, and no further: a long, fast flick used to count as
-    // a deliberate drag while the finger was down, so it ran through several steps before the
-    // cap applied, and could throw the page right out of the sequence into the next section.
-    var from = 0, lastTouch = 0, MOMENTUM = 1200;
-    // The pin stops reporting once a fast flick has carried the page out of it, so the hold is
-    // also enforced on every window scroll while the gesture and its momentum last.
-    var holdHi = Infinity, holdLo = -Infinity, latch = null;
-    function inGesture() { return hasTouch && (touching || Date.now() - lastTouch < MOMENTUM); }
-    try {
-      window.addEventListener('scroll', function () {
-        if (!pin || settling || jumped || !inGesture()) return;
-        var y = window.pageYOffset;
-        if (y <= holdHi && y >= holdLo) return;
-        y = y > holdHi ? holdHi : holdLo;
-        if (window.cpLenis) window.cpLenis.scrollTo(y, { immediate: true, force: true });
-        else window.scrollTo(0, y);
-      }, { passive: true });
-    } catch (err) { log('hold watch failed', err); }
     try {
       hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      window.addEventListener('touchstart', function () { touching = true; lastTouch = Date.now(); holdHi = Infinity; holdLo = -Infinity; latch = null;
-        // A gesture that starts above the sequence may only enter it (step 1), and one that
-        // starts below it may only come back to the last frame.
-        var y0 = window.pageYOffset;
-        from = pin && y0 < pin.start - 10 ? -1 : pin && y0 > pin.end + 10 ? last + 1 : shown;
-      }, { passive: true });
-      window.addEventListener('touchend', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
-      window.addEventListener('touchcancel', function () { touching = false; lastTouch = Date.now(); }, { passive: true });
+      window.addEventListener('touchstart', function () { touching = true; }, { passive: true });
+      window.addEventListener('touchend', function () { touching = false; }, { passive: true });
+      window.addEventListener('touchcancel', function () { touching = false; }, { passive: true });
     } catch (err) { log('touch watch failed', err); }
 
     // Where step k comes to rest, as a fraction of the pin. Steps own a slice each; a sequence
@@ -212,12 +188,7 @@
       // still that gesture's one step, so bring it back. A jump is different from a throw: the
       // platform's momentum arrives as a long run of small steps, while a menu link to the footer
       // moves the page in one go, and that is the visitor asking to be somewhere else.
-      // On touch, leaving needs a gesture that started on that end (rest is the gesture's start
-      // step until it settles), so a flick from step 5 shows the whole view instead of running
-      // through it and out of the sequence.
-      var leaveTop = hasTouch ? rest <= 0 : true;
-      var leaveEnd = hasTouch ? rest >= last && shown >= last : shown >= last;
-      if ((p <= 0 && leaveTop) || (p >= 1 && leaveEnd)) return;
+      if (p <= 0 || (p >= 1 && shown >= last)) return;
       if (jumped) return;
       rest = shown;                                   // this gesture is spent; the next one starts here
       var want = Math.round(pin.start + centre(shown) * (pin.end - pin.start));
@@ -232,59 +203,24 @@
     }
 
     // Call from the pin's onUpdate with the step the scroll has actually reached; returns the
-    // step to show. attach(pin) hands over the pin as soon as it exists, so a gesture that starts
-    // above or below the sequence before it was ever entered is still recognised as such.
-    function update(self, reached) {
+    // step to show.
+    return function (self, reached) {
       pin = self;
       var y = self.scroll();
       var t = Date.now();
       var moved = prev === null ? 0 : Math.abs(y - prev);
       var dt = prevT ? Math.min(100, t - prevT) : 0;
       prev = y; prevT = t;
-      // At the pin's very end the reported progress can stay a hair under 1, which kept the last
-      // frame (reached only at progress 1 on the circle and wave pages) from ever showing.
-      if (y >= self.end - 1) reached = Math.max(reached, Math.min(last, zones));
-      var gesture = hasTouch && (touching || t - lastTouch < MOMENTUM);
       if (!settling) {
         jumped = moved > 2 * window.innerHeight;
         slow = moved <= FLICK ? slow + dt : 0;
-        if (gesture) rest = from;
-        else if (!hasTouch && slow >= DRAG) rest = reached;
-      }
-      // Hold the page inside the one step this gesture may reach, so a hard flick stops at that
-      // step's edge instead of running on (and, from mid-sequence, out of the pin). Leaving is
-      // still a gesture that starts on an end step, and a jump (a menu link) is never held.
-      if (gesture && !settling && !jumped) {
-        try {
-          var span = self.end - self.start;
-          // The step after rest ends at its slice's far edge; where the last frame lives at the
-          // pin's very end (circle, wave: zones === last), that edge is the end itself.
-          var hi = rest >= last ? Infinity : rest + 1 >= zones ? self.end + 1 : self.start + (rest + 2) / zones * span - 2;
-          var lo = rest > 0 ? self.start + (rest - 1) / zones * span + 2 : -Infinity;
-          holdHi = hi; holdLo = lo;
-          if (y > hi || y < lo) {
-            y = y > hi ? hi : lo;
-            if (window.cpLenis) window.cpLenis.scrollTo(y, { immediate: true, force: true });
-            else window.scrollTo(0, y);
-            reached = Math.min(last, Math.floor((y - self.start) / span * zones));
-          }
-        } catch (err) { log('hold failed', err); }
+        if (hasTouch ? touching : slow >= DRAG) rest = reached;
       }
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
       shown = Math.max(rest - 1, Math.min(rest + 1, reached));
-      // Once a gesture's momentum has reached the next step, it keeps it: at the pin's very end the
-      // progress can read a hair under 1 on the next frame, which used to drop the last frame and
-      // pull the page back. While the finger is down the visitor can still change their mind.
-      if (gesture) {
-        if (touching) latch = shown !== rest ? shown : null;
-        else if (shown !== rest) latch = shown;
-        else if (latch !== null) shown = latch;
-      }
       return shown;
-    }
-    update.attach = function (self) { if (!pin) pin = self; };
-    return update;
+    };
   }
 
   // Desktop: after the sequence, one wheel or trackpad gesture is one step (whole → reviews →
@@ -512,23 +448,12 @@
         var k = size / (p.r * 2) / s;
         d.setAttribute('transform', 'translate(' + (x - tx) / s + ' ' + (y - ty) / s + ') scale(' + k + ') translate(' + -p.x + ' ' + -p.y + ')');
       });
-      // Phones: step text cross-fades in place instead of panning with the camera. In Figma's
-      // Smart Animate every element slides to the next frame, so a step's heading travelled up
-      // through the fixed header and was cut off there mid-transition (the visitor saw the
-      // heading vanish). Here a step's text holds its resting place, fades out over the first
-      // half of the transition and the next frame's text fades in at its own resting place over
-      // the second half; the path, dots and videos still pan exactly as before.
-      var fade = !!mode.stepped;
-      var g = fade ? (f < 0.5 ? 0 : 1) : f;
-      var textAlpha = fade ? Math.min(1, Math.abs(f - 0.5) * 2) : null;
       c.steps.forEach(function (el, n) {
-        var props = {
-          x: lerp(a.text[n][0], b.text[n][0], g) - base[n].x,
-          y: lerp(a.text[n][1], b.text[n][1], g) - base[n].y,
-          width: lerp(a.text[n][2], b.text[n][2], g)
-        };
-        if (fade) props.opacity = textAlpha;
-        gsap.set(el, props);
+        gsap.set(el, {
+          x: lerp(a.text[n][0], b.text[n][0], f) - base[n].x,
+          y: lerp(a.text[n][1], b.text[n][1], f) - base[n].y,
+          width: lerp(a.text[n][2], b.text[n][2], f)
+        });
       });
       media.forEach(function (el, n) {
         var from = a.media[n], to = b.media ? b.media[n] : from;   // into the whole view: fade in place
@@ -545,27 +470,9 @@
     // Pin so the stage sits where Figma puts it, with the Figma frame centred on the screen's real
     // height (as the prototype viewer does); never so low that the whole circle doesn't fit.
     var stageInSection = c.stage.getBoundingClientRect().top - section.getBoundingClientRect().top;
-    // How far below the viewport top the stage must start so every step's text clears the header:
-    // the header's bottom edge plus the most any keyframe lifts its shown text above the stage.
-    function headerClearance() {
-      var header = document.querySelector('.header_component');
-      var bottom = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
-      var lift = 0;
-      K.forEach(function (k, i) {
-        var shownText = i < last ? [k.text[i]] : k.text;          // a step frame shows its own text; the last shows all
-        shownText.forEach(function (t) { if (t) lift = Math.max(lift, -t[1]); });
-      });
-      return bottom + lift + 8;
-    }
-
     function pinTop() {
       var vh = window.innerHeight;
       var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
-      // Phones: Figma's frame is 844 tall, but a phone's visible height between the browser bars
-      // is often far less (an iPhone in Safari: ~680), and centring the frame then lifts the stage
-      // until the step headings, which sit above it, end up under the fixed header. Never pin the
-      // stage higher than the header plus the tallest heading lift; the stage bottom gives instead.
-      if (mode.stepped) top = Math.max(top, headerClearance());
       return Math.round(top - stageInSection);
     }
 
@@ -607,7 +514,6 @@
           gsap.to(state, { p: target, duration: st.duration, ease: figmaEaseOut, overwrite: true, onUpdate: render });
         }
       });
-      step.attach(stepPin);
       advanceWhenVideoEnds(stepPin,
         function (k) { return k < last ? stepPin.start + (k + 0.5) * zonePx() : stepPin.end + 1; },
         function () { return st.duration; });
