@@ -195,6 +195,80 @@
     };
   }
 
+  // Desktop: after the sequence, one wheel or trackpad gesture is one step (whole → reviews →
+  // form), not a fixed slice of scroll.
+  //
+  // Each step used to start only once 0.6 of a screen height had been scrolled into it. A
+  // trackpad swipe carries far less than that through Lenis, so reaching the form took three or
+  // four swipes, the form step then had another ~0.6 screen of scroll that changed nothing, and
+  // a visitor resting near a step boundary saw the reviews slide in and out (the flicker). Here
+  // the first movement of a gesture picks the next or previous step and the page glides to that
+  // step's resting point; the rest of the same gesture, including the trackpad's momentum, is
+  // swallowed so one swipe can never play two steps. A new gesture is a pause of QUIET ms or a
+  // sharp rise in the wheel delta (a fresh swipe started during the old one's momentum).
+  //
+  // restAt(k): where step k rests (0 = whole sequence shown, count = the last step, the pin's end).
+  // glideFor(from, to): seconds the glide takes. query: the layout this applies to. Leaving
+  // upwards from step 0 or downwards from the last step is ordinary scrolling, so the sequence
+  // itself and the page below are untouched.
+  function tailGestures(pin, restAt, count, glideFor, query) {
+    var QUIET = 220;        // ms without wheel events that ends a gesture
+    var lastT = 0, lastMag = 0, spent = false, busy = false;
+
+    function nearest(y) {
+      var best = 0, dist = Infinity;
+      for (var k = 0; k <= count; k++) {
+        var d = Math.abs(restAt(k) - y);
+        if (d < dist) { dist = d; best = k; }
+      }
+      return best;
+    }
+
+    function glide(y, seconds) {
+      busy = true;
+      var done = function () { busy = false; };
+      window.setTimeout(done, seconds * 1000 + 400);   // never leave the flag stuck
+      if (window.cpLenis) {
+        window.cpLenis.scrollTo(y, { duration: seconds, lock: true, force: true, onComplete: done });
+      } else {
+        var pos = { y: window.pageYOffset };
+        window.gsap.to(pos, { y: y, duration: seconds, ease: 'power2.out', overwrite: true,
+          onUpdate: function () { window.scrollTo(0, pos.y); }, onComplete: done });
+      }
+    }
+
+    function swallow(e) { e.preventDefault(); e.stopImmediatePropagation(); }
+
+    function onWheel(e) {
+      try {
+        if (query && !window.matchMedia(query).matches) return;          // not this layout
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;            // sideways: the card row
+        if (e.target && e.target.closest && e.target.closest('[data-lenis-prevent]')) return;
+        var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+        var now = Date.now(), mag = Math.abs(dy);
+        var fresh = now - lastT > QUIET || (mag > 15 && mag > lastMag * 1.6);
+        lastT = now; lastMag = mag;
+
+        var y = window.pageYOffset;
+        var inside = y >= restAt(0) - 2 && y <= restAt(count) + 2;
+        if (!inside && !busy) { spent = false; return; }
+        if (busy || (spent && !fresh)) return swallow(e);
+        spent = false;
+
+        var from = nearest(y), dir = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        if (!dir) return swallow(e);
+        if ((dir < 0 && from === 0) || (dir > 0 && from === count)) return;   // ordinary scrolling
+        var to = from + dir;
+        swallow(e);
+        spent = true;
+        glide(restAt(to), glideFor(from, to));
+      } catch (err) { log('tail gesture failed', err); }
+    }
+
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return function () { window.removeEventListener('wheel', onWheel, { capture: true }); };
+  }
+
   function log(msg, e) { try { console.debug('[infinity] ' + msg, e || ''); } catch (_) {} }
   function lerp(a, b, t) { return a + (b - a) * t; }
   function all(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
@@ -498,6 +572,16 @@
       onRefresh: function (self) { trimTail(self.end); update(self, true); },
       onUpdate: function (self) { update(self, false); }
     });
+
+    // One gesture per step after the sequence (see tailGestures). Re-init replaces the old one.
+    if (steps) {
+      if (section._cpTailOff) section._cpTailOff();
+      section._cpTailOff = tailGestures(pin, function (k) {
+        if (k <= 0) return pin.start + infinityPx();
+        if (k >= steps) return pin.end;
+        return pin.start + infinityPx() + (k - 0.5) * stepPx();
+      }, steps, function () { return 0.6; }, mode.query);
+    }
 
     if (mode.autoAdvance) {
       // Auto-advance: when a step's video ends and the visitor hasn't scrolled, scroll on to the
