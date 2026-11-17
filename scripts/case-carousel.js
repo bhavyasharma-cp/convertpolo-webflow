@@ -26,7 +26,8 @@
  *     [data-cp="case-dots"] > i  one per card, `.is-active` marks the current one
  *
  * Below 768 the row is already a native scroll-snap strip, which is the better phone
- * interaction, so this stays out of the way entirely.
+ * interaction, so the row is left alone there; only the dots (shown on phones only) follow
+ * the swipe, and tapping a dot brings its card in.
  *
  * The travel is measured, not assumed: the row starts with the first card against the
  * container's left padding and ends with the last card against its right padding, so it
@@ -98,9 +99,61 @@
     var dots = strip.children;
     while (dots.length > count) strip.removeChild(strip.lastChild);
     while (dots.length && dots.length < count) {
-      strip.appendChild(dots[0].cloneNode(false));
+      var extra = dots[0].cloneNode(false);
+      extra.classList.remove('is-active');       // the first dot is the lit one
+      strip.appendChild(extra);
     }
     return Array.prototype.slice.call(strip.children);
+  }
+
+  // Phones: the row is a native scroll-snap strip and the dots are the only place they show
+  // (the strip is hidden from 768 up). Light the dot of the card the strip has come to, and
+  // let a tap on a dot bring its card in.
+  function phoneDots(row, cards, dots) {
+    if (dots.length < 2) return;
+
+    function lead() {
+      var cs = getComputedStyle(row);
+      return row.getBoundingClientRect().left + (parseFloat(cs.scrollPaddingLeft) || parseFloat(cs.paddingLeft) || 0);
+    }
+    function targetOf(i) {
+      var max = Math.max(0, row.scrollWidth - row.clientWidth);
+      var x = cards[i].getBoundingClientRect().left - lead() + row.scrollLeft;
+      return Math.min(max, Math.max(0, Math.round(x)));
+    }
+    function light(i) {
+      for (var d = 0; d < dots.length; d++) dots[d].classList.toggle('is-active', d === i);
+    }
+
+    var queued = false;
+    function onScroll() {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(function () {
+        queued = false;
+        var max = row.scrollWidth - row.clientWidth;
+        if (max > 0 && row.scrollLeft >= max - 2) return light(cards.length - 1);
+        var best = 0, dist = Infinity;
+        for (var i = 0; i < cards.length; i++) {
+          var d = Math.abs(targetOf(i) - row.scrollLeft);
+          if (d < dist) { dist = d; best = i; }
+        }
+        light(best);
+      });
+    }
+    row.addEventListener('scroll', onScroll, { passive: true });
+
+    dots.forEach(function (dot, i) {
+      dot.style.cursor = 'pointer';
+      dot.addEventListener('click', function () {
+        try {
+          light(i);
+          var left = targetOf(i);
+          if (!reduced() && row.scrollTo) row.scrollTo({ left: left, behavior: 'smooth' });
+          else row.scrollLeft = left;
+        } catch (err) { console.debug('[cases] dot', err); }
+      });
+    });
   }
 
   function init(section) {
@@ -114,6 +167,8 @@
     // we measure and the row is the list one step above the wrapper.
     var row = cards[0].parentNode;
     if (row.classList.contains('w-dyn-item')) row = row.parentNode;
+
+    phoneDots(row, cards, dots);
 
     var mq = window.matchMedia(DESKTOP);
     var tween = null;
