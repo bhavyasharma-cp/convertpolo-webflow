@@ -547,9 +547,27 @@
     // Pin so the stage sits where Figma puts it, with the Figma frame centred on the screen's real
     // height (as the prototype viewer does); never so low that the whole wave doesn't fit.
     var stageInSection = c.stage.getBoundingClientRect().top - section.getBoundingClientRect().top;
+    // How far below the viewport top the stage must start so every step's text clears the header:
+    // the header's bottom edge plus the most any keyframe lifts its shown text above the stage.
+    function headerClearance() {
+      var header = document.querySelector('.header_component');
+      var bottom = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
+      var lift = 0;
+      K.forEach(function (k, i) {
+        var shownText = i < last ? [k.text[i]] : k.text;          // a step frame shows its own text; the last shows all
+        shownText.forEach(function (t) { if (t) lift = Math.max(lift, -t[1]); });
+      });
+      return bottom + lift + 8;
+    }
+
     function pinTop() {
       var vh = window.innerHeight;
       var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
+      // Phones: Figma's frame is 844 tall, but a phone's visible height between the browser bars
+      // is often far less (an iPhone in Safari: ~680), and centring the frame then lifts the stage
+      // until the step headings, which sit above it, end up under the fixed header. Never pin the
+      // stage higher than the header plus the tallest heading lift; the stage bottom gives instead.
+      if (mode.stepped) top = Math.max(top, headerClearance());
       return Math.round(top - stageInSection);
     }
 
