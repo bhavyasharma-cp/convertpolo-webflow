@@ -37,7 +37,9 @@
 (function () {
   'use strict';
 
-  var DESKTOP = '(min-width: 768px)';
+  // Pinned travel needs a wheel or trackpad. Touch screens (phones and tablets alike) keep the
+  // row as a native swipe strip instead — on an iPad the pinned row could not be swiped at all.
+  var DESKTOP = '(min-width: 768px) and (hover: hover)';
   var SCRUB = 1;            // mango-media uses 1
   var FALLBACK_PAD = 30;    // if padding-global cannot be read
 
@@ -116,8 +118,13 @@
       var cs = getComputedStyle(row);
       return row.getBoundingClientRect().left + (parseFloat(cs.scrollPaddingLeft) || parseFloat(cs.paddingLeft) || 0);
     }
+    // Where card i comes to rest. When the row is only a little wider than the screen (an iPad
+    // shows most cards at once), the last cards all share the row's end; then the cards are spread
+    // evenly over the scroll there is, so every dot still has its own position.
     function targetOf(i) {
       var max = Math.max(0, row.scrollWidth - row.clientWidth);
+      var lastX = cards[cards.length - 1].getBoundingClientRect().left - lead() + row.scrollLeft;
+      if (cards.length > 1 && lastX > max + 2) return Math.round(i / (cards.length - 1) * max);
       var x = cards[i].getBoundingClientRect().left - lead() + row.scrollLeft;
       return Math.min(max, Math.max(0, Math.round(x)));
     }
