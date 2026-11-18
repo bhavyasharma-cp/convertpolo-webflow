@@ -311,7 +311,12 @@
   // site head CSS gives them the phone styles for this section), landscape tablets the desktop layout
   // shrunk. Phones and desktops at least ~1290px wide keep scale 1 and are not touched at all.
   // lift: how far the phone frames raise a step's text above the stage (it must clear the header).
-  var DESIGN = { desktop: { w: 1233, h: 707, lift: 0 }, mobile: { w: 371, h: 567, lift: 57 } };
+  // below: how far a phone frame reaches under the stage (step 1's video, step 4's text).
+  // A phone whose visible height can't hold lift + stage + below under the header (iPhones with
+  // Safari's bars showing: ~660-750px against the ~810 needed) gets the phone layout shrunk to fit,
+  // the same way, instead of cutting the step text off under the header and the bottom off screen.
+  var DESIGN = { desktop: { w: 1233, h: 707, lift: 0, below: 0 }, mobile: { w: 371, h: 567, lift: 57, below: 117 } };
+  var EDGE = 8;                  // gap kept under the header and above the bottom of the screen
 
   function headerBottom() {
     var h = document.querySelector('.header_component');
@@ -330,8 +335,11 @@
         var down = Math.min(1, (vw - 60) / d.w);
         return down < 0.98 ? down : 1;
       }
-      var up = Math.min((vw - 40) / d.w, (vh - headerBottom() - 34) / (d.h + d.lift));
-      return up > 1.05 ? up : 1;
+      var tall = (vh - headerBottom() - 2 * EDGE) / (d.h + d.lift + d.below);
+      var up = Math.min((vw - 40) / d.w, tall);
+      if (up > 1.05) return up;                                   // portrait tablets
+      var down = Math.min(1, (vw - 16) / d.w, tall);              // short phones
+      return down < 0.99 ? down : 1;
     }
     function apply() {
       var s = scale();
@@ -497,9 +505,11 @@
       var vh = window.innerHeight;
       var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
       if (fit.s !== 1) {
-        // Scaled (tablets): centre the stage, but never so high that its step text meets the header.
-        var sh = c.stage.offsetHeight, clear = headerBottom() + 12 + fit.lift * fit.s;
-        top = Math.max(clear, Math.min((vh - sh) / 2, vh - sh - 10));
+        // Scaled (tablets, short phones): centre the frame (step text + stage + what hangs below it),
+        // never so high that the step text meets the header.
+        var sh = c.stage.offsetHeight, d = DESIGN[mode.name];
+        var lift = d.lift * fit.s, below = d.below * fit.s, clear = headerBottom() + EDGE + lift;
+        top = Math.max(clear, Math.min(lift + (vh - lift - sh - below) / 2, vh - sh - below - EDGE));
       }
       return Math.round(top - stageInSection);
     }
