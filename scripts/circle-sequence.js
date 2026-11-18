@@ -216,6 +216,12 @@
         slow = moved <= FLICK ? slow + dt : 0;
         if (hasTouch ? touching : slow >= DRAG) rest = reached;
       }
+      // Out of the pin: the frame left showing is what sits on the page above or below it. A
+      // throw out of the top used to leave a middle step showing (one step back per gesture),
+      // and that step's zoomed-in artwork then hung over the section above. Leaving from the
+      // top always rests on the first frame; a jump past the end rests on the last.
+      if (self.progress <= 0) { window.clearTimeout(timer); rest = shown = 0; return 0; }
+      if (self.progress >= 1 && jumped) { window.clearTimeout(timer); rest = shown = last; return last; }
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, STILL);
       shown = Math.max(rest - 1, Math.min(rest + 1, reached));
