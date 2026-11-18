@@ -68,7 +68,7 @@
 
   var MODES = {
     desktop: {
-      name: 'desktop', query: '(min-width: 768px)', keyframes: KEYFRAMES.desktop,
+      name: 'desktop', query: '(min-width: 1024px), (min-width: 768px) and (orientation: landscape)', keyframes: KEYFRAMES.desktop,
       media: { w: 870, h: 489 },                       // video slot (Figma 870×489)
       strokeZoomed: 15,                                // line thickness while zoomed (6 in the whole view)
       stageTop: 203, frameHeight: 1024,                // stage top in the 1440×1024 frame 1:8676
@@ -86,7 +86,7 @@
       }
     },
     mobile: {
-      name: 'mobile', query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
+      name: 'mobile', query: '(max-width: 767px), (max-width: 1023px) and (orientation: portrait)', keyframes: KEYFRAMES.mobile,
       media: { w: 275, h: 598 },                       // portrait video slot (Figma 275×598)
       strokeZoomed: 10,
       stageTop: 139, frameHeight: 844,                 // frame 1:902 (390×844)
@@ -302,9 +302,76 @@
     };
   }
 
+  // ---- Tablets ---------------------------------------------------------------------------------
+  // The stage is a fixed design-size box (desktop 1233×707, phone 371×567) and every keyframe is in
+  // its pixels, so a screen of another width cannot simply resize the box: text and videos land off
+  // screen or on top of each other (iPads showed exactly that). On those screens the stage is drawn at
+  // its design size inside a wrapper and scaled as one piece, so everything keeps Figma's proportions:
+  // portrait tablets get the phone layout enlarged (the MODES queries send them to 'mobile', and the
+  // site head CSS gives them the phone styles for this section), landscape tablets the desktop layout
+  // shrunk. Phones and desktops at least ~1290px wide keep scale 1 and are not touched at all.
+  // lift: how far the phone frames raise a step's text above the stage (it must clear the header).
+  var DESIGN = { desktop: { w: 1233, h: 707, lift: 0 }, mobile: { w: 371, h: 567, lift: 57 } };
+
+  function headerBottom() {
+    var h = document.querySelector('.header_component');
+    return h ? Math.max(0, h.getBoundingClientRect().bottom) : 0;
+  }
+
+  function fitStage(stage, mode) {
+    var d = DESIGN[mode.name], fit = { s: 1, lift: d.lift };
+    var inner = null;
+    for (var i = 0; i < stage.children.length; i++) {
+      if (stage.children[i].classList.contains('cp-how-scale')) inner = stage.children[i];
+    }
+    function scale() {
+      var vw = document.documentElement.clientWidth, vh = window.innerHeight;
+      if (mode.name === 'desktop') {
+        var down = Math.min(1, (vw - 60) / d.w);
+        return down < 0.98 ? down : 1;
+      }
+      var up = Math.min((vw - 40) / d.w, (vh - headerBottom() - 34) / (d.h + d.lift));
+      return up > 1.05 ? up : 1;
+    }
+    function apply() {
+      var s = scale();
+      fit.s = s;
+      if (s === 1 && !inner) return;
+      if (!inner) {
+        inner = document.createElement('div');
+        inner.className = 'cp-how-scale';
+        while (stage.firstChild) inner.appendChild(stage.firstChild);
+        stage.appendChild(inner);
+      }
+      if (s === 1) {
+        inner.removeAttribute('style');
+        ['width', 'height', 'maxWidth', 'marginLeft', 'marginRight'].forEach(function (k) { stage.style[k] = ''; });
+        return;
+      }
+      inner.style.cssText = 'position:absolute;left:0;top:0;width:' + d.w + 'px;height:' + d.h + 'px;' +
+        'transform-origin:0 0;transform:scale(' + s + ')';
+      stage.style.maxWidth = 'none';
+      stage.style.width = Math.round(d.w * s) + 'px';
+      stage.style.height = Math.round(d.h * s) + 'px';
+      stage.style.marginLeft = 'auto';
+      stage.style.marginRight = 'auto';
+    }
+    apply();
+    stage._cpFit = apply;
+    if (!stage._cpFitHooked && window.ScrollTrigger) {
+      stage._cpFitHooked = true;
+      // Re-fit before the pins re-measure (rotation, resize), so they measure the new size.
+      window.ScrollTrigger.addEventListener('refreshInit', function () {
+        try { if (stage._cpFit) stage._cpFit(); } catch (e) { log('fit failed', e); }
+      });
+    }
+    return fit;
+  }
+
   function init(section, gsap, mode) {
     var c = setup(section);
     if (!c) return log('markup incomplete');
+    var fit = fitStage(c.stage, mode);
     var media = c.media.length === 5 ? c.media : [];
 
     // Keyframes: desktop zoomed frames shift onto the prototype's screen positions.
@@ -429,6 +496,11 @@
     function pinTop() {
       var vh = window.innerHeight;
       var top = Math.max(0, Math.min(mode.stageTop + (vh - mode.frameHeight) / 2, vh - c.stage.offsetHeight - 10));
+      if (fit.s !== 1) {
+        // Scaled (tablets): centre the stage, but never so high that its step text meets the header.
+        var sh = c.stage.offsetHeight, clear = headerBottom() + 12 + fit.lift * fit.s;
+        top = Math.max(clear, Math.min((vh - sh) / 2, vh - sh - 10));
+      }
       return Math.round(top - stageInSection);
     }
 
