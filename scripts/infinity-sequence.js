@@ -452,6 +452,17 @@
         gsap.set(v, { display: match && v === mine ? 'block' : 'none' });
       });
       if (mine && mine.preload === 'none') mine.preload = 'auto';
+      // iPhone Safari can leave a video blank (not even its poster) while it is still loading, or
+      // when Low Power Mode blocks it from playing, and the visitor saw an empty grey box. Paint the
+      // poster on the box behind the video, so the frame always shows and the video plays over it.
+      try {
+        var poster = mine && mine.getAttribute('poster');
+        if (poster) {
+          el.style.backgroundImage = 'url("' + poster.replace(/"/g, '%22') + '")';
+          el.style.backgroundSize = 'cover';
+          el.style.backgroundPosition = 'center';
+        }
+      } catch (e) { log('poster', e); }
       return mine;
     });
 
