@@ -385,6 +385,8 @@
   function init(section, gsap, mode) {
     var c = setup(section);
     if (!c) return log('markup incomplete');
+    // A previous layout's tweens on the stage must not finish on top of this one (see teardown).
+    gsap.killTweensOf(c.stage);
     var fit = fitStage(c.stage, mode);
     var media = c.media.length === 5 ? c.media : [];
 
@@ -552,7 +554,7 @@
         }
       });
       render();
-      return;
+      return function teardown() { gsap.killTweensOf(state); };
     }
 
     // After the whole infinity (prototype 1:8676 → 1:10281 → 1:10671): the infinity slides out left
@@ -600,7 +602,9 @@
     var steps = !next ? 0 : after ? 2 : 1;
     var stepPx = function () { return window.innerHeight * o.scrollPerStep; };
     var infinityPx = function () { return window.innerHeight * SCROLL_PER_UNIT * units; };
-    var stage = c.stage, tailStep = 0, level = [], tailPad = null;
+    // tailStep starts unknown (-1), so the first update always sets the stage, the testimonials and
+    // the footer together, whatever state an earlier layout left them in.
+    var stage = c.stage, tailStep = -1, level = [], tailPad = null;
     var stageOut = 0, nextIn = 0, nextOut = 0;
 
     if (next) {
@@ -727,6 +731,21 @@
       }
     }
     render();
+
+    // When this layout is replaced (phone ↔ desktop width, a rotated iPad, DevTools' device mode),
+    // gsap.matchMedia undoes what was set here at start-up — but not what the scroll callbacks set
+    // later: the stage slid out, the footer faded in or out, the testimonials moved. Left behind,
+    // that state showed the footer form on top of the infinity, or hid the footer on a phone.
+    // So the slide-out is cleared here, and the next layout starts from the page's own state.
+    return function teardown() {
+      try {
+        if (section._cpTailOff) { section._cpTailOff(); section._cpTailOff = null; }
+        gsap.killTweensOf([stage].concat(level));
+        tl.kill();
+        gsap.set(stage, { clearProps: 'transform' });
+        if (level.length) gsap.set(level, { clearProps: 'transform,opacity,visibility,marginTop,position,zIndex,paddingBottom' });
+      } catch (e) { log('teardown failed', e); }
+    };
   }
 
   function showFinal(section) {
@@ -754,7 +773,8 @@
           var mm = gsap.matchMedia();
           Object.keys(MODES).forEach(function (k) {
             mm.add(MODES[k].query, function () {
-              try { init(s, gsap, MODES[k]); } catch (e) { log(k + ' init failed', e); showFinal(s); }
+              // init's teardown runs when this layout stops matching (see the end of init).
+              try { return init(s, gsap, MODES[k]); } catch (e) { log(k + ' init failed', e); showFinal(s); }
             });
           });
         })(section);
