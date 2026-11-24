@@ -6,7 +6,7 @@
  *   1:10069 → 1:8432 → 1:8493 → 1:8554 → 1:8615   steps 01→05, Smart Animate 1.5s linear each
  *   1:8615  → 1:8676   zoom out to the whole infinity, 0.8s linear
  *   1:8676  → 1:10281  next scroll: infinity out left, testimonials in from the right, 1s ease-out
- *   1:10281 → 1:10671  next scroll: testimonials out left, footer (form) fades in, 0.6s ease-out
+ *   1:10281 → 1:10671  next scroll: testimonials out left, footer (form) rises in from below, 0.6s ease-out
  * Mobile frames: 1:588 (01) → 1:674 → 1:731 → 1:788 → 1:845 (05) → 1:902 (whole), 0.6s ease-out each.
  * Each frame waits for a click in the prototype; on the site each step holds while you scroll.
  *
@@ -76,13 +76,13 @@
       zoomOut: 0.8, zoomOutEase: 'none',               // 05 → whole
       // 1:8676 → 1:10281 (1s ease-out): infinity −1430px, testimonials −1380px (1460 → 80),
       // cards 96px below the stage top (299 vs 203). Then 1:10281 → 1:10671 (0.6s ease-out):
-      // testimonials −1850px, footer fades in with its heading 23px above the stage top (180 vs 203).
+      // testimonials −1850px, footer rises in from below with its heading landing 23px above the stage top (180 vs 203).
       // Distances are measured on the page so the slides start/end just off screen at any width
       // (Figma at 1440: 1460 → 80, then 80 → −1770; the infinity ends at −22 past the left edge).
       autoAdvance: true,                               // step videos play once, then move to the next step
       slideOut: {
         cardsBelowStage: 96, duration: 1, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6,
-        exit: { duration: 0.6, headingBelowStage: -23 }
+        exit: { duration: 0.6, headingBelowStage: -23, footerRise: 930 }
       }
     },
     mobile: {
@@ -566,7 +566,7 @@
 
     // After the whole infinity (prototype 1:8676 → 1:10281 → 1:10671): the infinity slides out left
     // as the next section (testimonials) slides in from the right; then the testimonials slide out
-    // left too and the section after them (the footer) fades in where they were. Both sections are
+    // left too and the section after them (the footer) rises in from below to where they were. Both sections are
     // pulled up over the infinity's place, measured now from the natural layout, before pinning.
     var o = mode.slideOut;
     var next = o ? section.nextElementSibling : null;
@@ -675,6 +675,24 @@
       if (over > 0) gsap.set(tail, { paddingBottom: Math.max(0, tailPad - over) });
     }
 
+    // Footer, as in the prototype (Smart Animate 0.6s ease-out into the footer frame): it is solid
+    // the whole way and rises from just below the screen (Figma: heading 1110 → 180 on CRO) while
+    // the cards slide off to the left. The rise is the Figma distance scaled to the window height,
+    // so it always starts off screen. It runs on yPercent because y already belongs to the pin
+    // (the level sections follow the scroll with it); GSAP adds the two. At rest it is 0.
+    function moveFooter(s, prev, tw, figmaRise) {
+      if (!after) return;
+      var pct = (figmaRise * window.innerHeight / 1024) / Math.max(1, after.offsetHeight) * 100;
+      if (prev === -1) { gsap.set(after, { autoAlpha: s === 2 ? 1 : 0, yPercent: 0 }); return; }
+      if (s === 2) {
+        if (parseFloat(gsap.getProperty(after, 'opacity')) < 0.01) gsap.set(after, { yPercent: pct });
+        gsap.set(after, { autoAlpha: 1 });
+        gsap.to(after, Object.assign({}, tw, { yPercent: 0 }));
+      } else if (prev === 2) {
+        gsap.to(after, Object.assign({}, tw, { yPercent: pct, onComplete: function () { gsap.set(after, { autoAlpha: 0, yPercent: 0 }); } }));
+      }
+    }
+
     function goToTail(s) {
       if (s === tailStep) return;
       var dur = (s === 2 && tailStep === 1) || (s === 1 && tailStep === 2) ? o.exit.duration : o.duration;
@@ -682,7 +700,7 @@
       gsap.to(stage, Object.assign({ x: s === 0 ? 0 : -stageOut }, tw));
       if (s === 0) gsap.to(next, Object.assign({ x: nextIn, onComplete: function () { gsap.set(next, { autoAlpha: 0 }); } }, tw));
       else { gsap.set(next, { autoAlpha: 1 }); gsap.to(next, Object.assign({ x: s === 1 ? 0 : -nextOut }, tw)); }
-      if (after) gsap.to(after, Object.assign({ autoAlpha: s === 2 ? 1 : 0 }, tw));
+      moveFooter(s, tailStep, tw, o.exit.footerRise);
       tailStep = s;
     }
 

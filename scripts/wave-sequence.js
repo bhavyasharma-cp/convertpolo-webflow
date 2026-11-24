@@ -6,7 +6,7 @@
  *   1:11225 → 1:11168 → 1:11284 → 1:11341 → 1:11398   steps 01→05, Smart Animate 1.2s ease-out each
  *   1:11398 → 1:11455  zoom out to the whole wave, 1.2s ease-out
  *   1:11455 → 1:10392  next scroll: wave and testimonials rise together (−748 / −740px), 0.6s ease-out
- *   1:10392 → 1:10771  next scroll: testimonials out left, footer (form) fades in, 0.6s ease-out
+ *   1:10392 → 1:10771  next scroll: testimonials out left, footer (form) rises in from below, 0.6s ease-out
  * Mobile frames: 1:2756 (01) → 1:2841 → 1:2926 → 1:3011 → 1:3096 (05) → 1:3181 (whole), 0.6s ease-out
  * each; after the whole wave the page simply scrolls on (1:3363, 1:3546).
  * Each frame waits for a click in the prototype; on the site each step holds while you scroll, and a
@@ -104,10 +104,10 @@
       travel: 1.2, zoomOut: 1.2,                       // 01→05 and 05 → whole, Smart Animate 1.2s ease-out
       // 1:11455 → 1:10392 (0.6s ease-out): wave −748px, testimonials −740px; their cards start 705px
       // below the stage top (1039 vs 334). Then 1:10392 → 1:10771 (0.6s ease-out): testimonials leave
-      // left (80 → −1770 at 1440), footer fades in with its heading 154px above the stage top (180 vs 334).
+      // left (80 → −1770 at 1440), footer rises in from below with its heading landing 154px above the stage top (180 vs 334).
       tail: {
         cardsBelowStage: 705, stageRise: 748, cardsRise: 740, duration: 0.6, ease: figmaEaseOut,
-        offscreenGap: 20, scrollPerStep: 0.6, headingBelowStage: -154
+        offscreenGap: 20, scrollPerStep: 0.6, headingBelowStage: -154, footerRise: 970
       }
     },
     mobile: {
@@ -550,7 +550,7 @@
 
     // After the whole wave (prototype 1:11455 → 1:10392 → 1:10671): the wave and the next section
     // (testimonials) rise together; then the testimonials slide out left and the section after them
-    // (the footer) fades in where they were. Both are pulled up next to the stage, measured now from
+    // (the footer) rises in from below to where they were. Both are pulled up next to the stage, measured now from
     // the natural layout, before pinning. The rise and slide move the testimonials' inner wrapper,
     // since the section itself is held in place against the pin with `y`.
     var o = mode.tail;
@@ -655,12 +655,30 @@
       if (over > 0) gsap.set(tail, { paddingBottom: Math.max(0, tailPad - over) });
     }
 
+    // Footer, as in the prototype (Smart Animate 0.6s ease-out into the footer frame): it is solid
+    // the whole way and rises from just below the screen (Figma: heading 1110 → 180 on CRO) while
+    // the cards slide off to the left. The rise is the Figma distance scaled to the window height,
+    // so it always starts off screen. It runs on yPercent because y already belongs to the pin
+    // (the level sections follow the scroll with it); GSAP adds the two. At rest it is 0.
+    function moveFooter(s, prev, tw, figmaRise) {
+      if (!after) return;
+      var pct = (figmaRise * window.innerHeight / 1024) / Math.max(1, after.offsetHeight) * 100;
+      if (prev === -1) { gsap.set(after, { autoAlpha: s === 2 ? 1 : 0, yPercent: 0 }); return; }
+      if (s === 2) {
+        if (parseFloat(gsap.getProperty(after, 'opacity')) < 0.01) gsap.set(after, { yPercent: pct });
+        gsap.set(after, { autoAlpha: 1 });
+        gsap.to(after, Object.assign({}, tw, { yPercent: 0 }));
+      } else if (prev === 2) {
+        gsap.to(after, Object.assign({}, tw, { yPercent: pct, onComplete: function () { gsap.set(after, { autoAlpha: 0, yPercent: 0 }); } }));
+      }
+    }
+
     function goToTail(s) {
       if (s === tailStep) return;
       var tw = { duration: o.duration, ease: o.ease, overwrite: 'auto' };
       gsap.to(stage, Object.assign({ y: s === 0 ? 0 : -o.stageRise }, tw));
       gsap.to(inner, Object.assign({ y: s === 0 ? 0 : -o.cardsRise, x: s === 2 ? -nextOut : 0 }, tw));
-      if (after) gsap.to(after, Object.assign({ autoAlpha: s === 2 ? 1 : 0 }, tw));
+      moveFooter(s, tailStep, tw, o.footerRise);
       tailStep = s;
     }
 

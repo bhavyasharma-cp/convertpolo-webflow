@@ -7,7 +7,7 @@
  *   1:9894  → 1:9955   zoom out to the whole circle, 1.2s ease-out
  *   1:9955  → 1:10538  next scroll: circle fades out, testimonials slide in from the right
  *                      (1460 → 80), 0.6s ease-out
- *   1:10538 → 1:10871  next scroll: testimonials out left (80 → −1760), footer (form) fades in, 0.6s ease-out
+ *   1:10538 → 1:10871  next scroll: testimonials out left (80 → −1760), footer (form) rises in from below, 0.6s ease-out
  * Each frame waits for a click in the prototype; on the site each step holds while you scroll, and a
  * step's video playing to the end moves on to the next step.
  * Mobile frames (390×844, the page 123:6963 scrolled to y 2763): 1:4057 → 1:4155 → 1:4253 → 1:4351 →
@@ -108,9 +108,9 @@
       travel: 1.2, zoomOut: 1.2,                       // 01→05 and 05 → whole, Smart Animate 1.2s ease-out
       // 1:9955 → 1:10538 (0.6s ease-out): circle fades, testimonials 1460 → 80 with their cards 127px
       // below the stage top (299 vs 172). Then 1:10538 → 1:10871 (0.6s ease-out): testimonials leave
-      // left (80 → −1760 at 1440), footer fades in with its heading 8px below the stage top (180 vs 172).
+      // left (80 → −1760 at 1440), footer rises in from below with its heading landing 8px below the stage top (180 vs 172).
       // Distances are measured on the page so the slides start/end just off screen at any width.
-      tail: { cardsBelowStage: 127, headingBelowStage: 8, duration: 0.6, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6 }
+      tail: { cardsBelowStage: 127, headingBelowStage: 8, footerRise: 890, duration: 0.6, ease: figmaEaseOut, offscreenGap: 20, scrollPerStep: 0.6 }
     },
     mobile: {
       name: 'mobile', query: '(max-width: 767px)', keyframes: KEYFRAMES.mobile,
@@ -549,7 +549,7 @@
 
     // After the whole circle (prototype 1:9955 → 1:10538 → 1:10871): the circle fades out as the next
     // section (testimonials) slides in from the right; then the testimonials slide out left and the
-    // section after them (the footer) fades in where they were. Both are pulled up next to the stage,
+    // section after them (the footer) rises in from below to where they were. Both are pulled up next to the stage,
     // measured now from the natural layout, before pinning.
     var o = mode.tail;
     var next = section.nextElementSibling;
@@ -653,13 +653,31 @@
       if (over > 0) gsap.set(tail, { paddingBottom: Math.max(0, tailPad - over) });
     }
 
+    // Footer, as in the prototype (Smart Animate 0.6s ease-out into the footer frame): it is solid
+    // the whole way and rises from just below the screen (Figma: heading 1110 → 180 on CRO) while
+    // the cards slide off to the left. The rise is the Figma distance scaled to the window height,
+    // so it always starts off screen. It runs on yPercent because y already belongs to the pin
+    // (the level sections follow the scroll with it); GSAP adds the two. At rest it is 0.
+    function moveFooter(s, prev, tw, figmaRise) {
+      if (!after) return;
+      var pct = (figmaRise * window.innerHeight / 1024) / Math.max(1, after.offsetHeight) * 100;
+      if (prev === -1) { gsap.set(after, { autoAlpha: s === 2 ? 1 : 0, yPercent: 0 }); return; }
+      if (s === 2) {
+        if (parseFloat(gsap.getProperty(after, 'opacity')) < 0.01) gsap.set(after, { yPercent: pct });
+        gsap.set(after, { autoAlpha: 1 });
+        gsap.to(after, Object.assign({}, tw, { yPercent: 0 }));
+      } else if (prev === 2) {
+        gsap.to(after, Object.assign({}, tw, { yPercent: pct, onComplete: function () { gsap.set(after, { autoAlpha: 0, yPercent: 0 }); } }));
+      }
+    }
+
     function goToTail(s) {
       if (s === tailStep) return;
       var tw = { duration: o.duration, ease: o.ease, overwrite: 'auto' };
       gsap.to(stage, Object.assign({ autoAlpha: s === 0 ? 1 : 0 }, tw));
       if (s === 0) gsap.to(next, Object.assign({ x: nextIn, onComplete: function () { gsap.set(next, { autoAlpha: 0 }); } }, tw));
       else { gsap.set(next, { autoAlpha: 1 }); gsap.to(next, Object.assign({ x: s === 1 ? 0 : -nextOut }, tw)); }
-      if (after) gsap.to(after, Object.assign({ autoAlpha: s === 2 ? 1 : 0 }, tw));
+      moveFooter(s, tailStep, tw, o.footerRise);
       tailStep = s;
     }
 
