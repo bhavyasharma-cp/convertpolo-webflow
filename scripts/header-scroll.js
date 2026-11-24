@@ -60,9 +60,81 @@
 
       apply(); // a reload part-way down a page starts in the right state
       window.addEventListener('scroll', onScroll, { passive: true });
+      tuckForFooter(header);
     } catch (e) {
       console.debug('header-scroll:', e);
     }
+  }
+
+  /*
+   * Footer: the header steps aside while it would cover the footer heading.
+   *
+   * The footer (heading + audit form + contact line + social links) is ~811px tall on desktop,
+   * so on a window under ~950px it cannot fit below the fixed, cream header, and the last scroll
+   * to the social links pulled "READY FOR AN EPIC GROWTH UPGRADE?" up under the header, cut
+   * through its letters (reported on the CRO page; on a laptop ~800px tall the CRO sequence even
+   * ends with it there). In the footer the header has nothing to add — its "Get Website Audit"
+   * button points at the form already on screen — so while the heading is at or above the
+   * header's bottom edge the header slides up out of view, and slides back as soon as the
+   * heading is below it again. It uses `translate`, not `transform`, so it never fights a
+   * transform set on the header elsewhere.
+   *
+   * Only while the footer is actually showing (the CRO / LPO / BBS sequences park it, invisible,
+   * over the step animation), never while the full-screen menu holds the page, and never while
+   * focus is inside the header.
+   */
+  var TUCK_GAP = 12;   // px kept between the header's bottom edge and the heading
+
+  function tuckForFooter(header) {
+    var footer = document.querySelector('.footer_component');
+    var heading = footer && (footer.querySelector('#audit h1, #audit h2, #audit h3') || footer.querySelector('h1, h2, h3'));
+    if (!heading || !('IntersectionObserver' in window)) return;
+
+    var style = document.createElement('style');
+    style.textContent = '.header_component.is-tucked{translate:0 calc(-100% - 24px)}';
+    document.head.appendChild(style);
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduced) {
+      var t = window.getComputedStyle(header).transition;
+      header.style.transition = (t && t !== 'all 0s ease 0s' ? t + ', ' : '') + 'translate 0.35s ease';
+    }
+
+    var tucked = false, looping = false, near = false, focused = false;
+
+    function pageLocked() {
+      var b = window.getComputedStyle(document.body), h = window.getComputedStyle(document.documentElement);
+      return b.overflow === 'hidden' || h.overflow === 'hidden';
+    }
+
+    function check() {
+      var want = false;
+      if (near && !focused && !pageLocked()) {
+        var fs = window.getComputedStyle(footer);
+        var shown = fs.visibility !== 'hidden' && parseFloat(fs.opacity) > 0.5;
+        var r = heading.getBoundingClientRect(), f = footer.getBoundingClientRect();
+        // header.offsetHeight: the bar's height, unaffected by the slide itself.
+        var edge = header.offsetHeight + TUCK_GAP;
+        want = shown && r.top < edge && f.bottom > edge;
+      }
+      if (want !== tucked) { tucked = want; header.classList.toggle('is-tucked', want); }
+    }
+
+    // Checked every frame only while the footer is near the screen: the sequences fade it in
+    // without any scrolling, so a scroll listener alone would miss that.
+    function loop() {
+      if (!near) { looping = false; check(); return; }
+      check();
+      window.requestAnimationFrame(loop);
+    }
+
+    new IntersectionObserver(function (entries) {
+      near = entries[entries.length - 1].isIntersecting;
+      if (near && !looping) { looping = true; window.requestAnimationFrame(loop); }
+      if (!near) check();
+    }, { rootMargin: '200px 0px' }).observe(footer);
+
+    header.addEventListener('focusin', function () { focused = true; check(); });
+    header.addEventListener('focusout', function () { focused = false; });
   }
 
   if (document.readyState === 'loading') {
