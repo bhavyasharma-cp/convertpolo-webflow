@@ -98,6 +98,7 @@
   };
   var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
   var TAIL_GAP = 24;             // breathing room kept under the footer's last line (see trimTail)
+  var FOOTER_MIN_TOP = 24;      // the footer heading never lands closer than this to the window top
   var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
   var PULSE = { ratio: 53 / 65, duration: 0.8, ease: 'power1.out' };
 
@@ -570,6 +571,7 @@
     // (section top on screen), and the stage top is stageTopInSection below the section top.
     // So each offset is chosen to put the content where Figma has it relative to the stage.
     var stageTopInSection = c.stage.offsetTop;
+    var fitAfter = null;   // keeps the footer heading on screen (see below)
     var nextMargin = 0, afterMargin = 0;
     if (next) {
       var docTop = function (el) { return el.getBoundingClientRect().top + window.pageYOffset; };
@@ -624,6 +626,17 @@
       if (after) {
         if (after.parentNode) gsap.set(after.parentNode, { overflowX: 'clip' });
         gsap.set(after, { marginTop: afterMargin, autoAlpha: 0, position: 'relative', zIndex: 1 });
+        // Figma lands the footer heading a fixed distance from the stage top, which on a short window
+        // (e.g. 1440×661, where the stage pins at the very top) put it above the top of the screen,
+        // cut in half at the end of the sequence. It never lands higher than FOOTER_MIN_TOP; the
+        // extra margin is worked out again before every refresh (resize, rotation). On a full-height
+        // screen it adds nothing. (header-scroll.js slides the header away while it would cover it.)
+        fitAfter = function () {
+          var landing = pinTop() + stageInSection + o.exit.headingBelowStage;
+          gsap.set(after, { marginTop: afterMargin + Math.max(0, FOOTER_MIN_TOP - landing) });
+        };
+        fitAfter();
+        window.ScrollTrigger.addEventListener('refreshInit', fitAfter);
         level.push(after);
       }
     }
@@ -740,6 +753,7 @@
     return function teardown() {
       try {
         if (section._cpTailOff) { section._cpTailOff(); section._cpTailOff = null; }
+        if (fitAfter) window.ScrollTrigger.removeEventListener('refreshInit', fitAfter);
         gsap.killTweensOf([stage].concat(level));
         tl.kill();
         gsap.set(stage, { clearProps: 'transform' });
