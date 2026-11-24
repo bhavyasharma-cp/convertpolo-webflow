@@ -125,7 +125,13 @@
   };
   var HOLD = 1;                  // scroll spent resting on each step, in the same units as `travel`
   var TAIL_GAP = 24;             // breathing room kept under the footer's last line (see trimTail)
-  var FOOTER_MIN_TOP = 24;      // the footer heading never lands closer than this to the window top
+  var FOOTER_GAP = 24;          // the footer heading never lands closer than this under the header
+  // Figma's end frames keep the header in view above the form (header bottom 89, heading 180 at
+  // 1440×1024), so the heading must land below the header, not merely below the window top.
+  function footerMinTop() {
+    var h = document.querySelector('[data-cp="header"], .header_component');
+    return (h ? h.offsetHeight : 0) + FOOTER_GAP;
+  }
   var SCROLL_PER_UNIT = 0.45;    // viewport heights of scrolling per timeline second
   var PULSE = { ratio: 53 / 65, duration: 0.8, ease: 'power1.out' };
   var USER_INPUT = ['wheel', 'touchstart', 'keydown', 'mousedown'];
@@ -606,12 +612,14 @@
         gsap.set(after, { marginTop: afterMargin, autoAlpha: 0, position: 'relative', zIndex: 1 });
         // Figma lands the footer heading a fixed distance from the stage top, which on a short window
         // (e.g. 1440×661, where the stage pins at the very top) put it above the top of the screen,
-        // cut in half at the end of the sequence. It never lands higher than FOOTER_MIN_TOP; the
+        // cut in half at the end of the sequence. It never lands higher than FOOTER_GAP under the
+        // header (the header stays in view, as in Figma's end frame); the
         // extra margin is worked out again before every refresh (resize, rotation). On a full-height
-        // screen it adds nothing. (header-scroll.js slides the header away while it would cover it.)
+        // screen it adds nothing. Scrolling on past the end (short screens) brings the heading up to
+        // the header, and header-scroll.js then slides the header away.
         fitAfter = function () {
           var landing = pinTop() + stageInSection + o.headingBelowStage;
-          gsap.set(after, { marginTop: afterMargin + Math.max(0, FOOTER_MIN_TOP - landing) });
+          gsap.set(after, { marginTop: afterMargin + Math.max(0, footerMinTop() - landing) });
         };
         fitAfter();
         window.ScrollTrigger.addEventListener('refreshInit', fitAfter);
